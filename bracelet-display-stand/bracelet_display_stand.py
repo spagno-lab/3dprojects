@@ -88,6 +88,15 @@ def horizontal_cylinder(comp, name, center_y, center_z, length, diameter):
     return feature
 
 
+def cylinder_body(manager, start, end, diameter):
+    return manager.createCylinderOrCone(
+        adsk.core.Point3D.create(*[cm(value) for value in start]),
+        cm(diameter / 2),
+        adsk.core.Point3D.create(*[cm(value) for value in end]),
+        cm(diameter / 2),
+    )
+
+
 def build_stand(comp):
     base = box(comp, 'Base', -BASE_WIDTH / 2, -BASE_DEPTH / 2, 0,
                BASE_WIDTH, BASE_DEPTH, BASE_HEIGHT,
@@ -110,42 +119,42 @@ def build_stand(comp):
 def build_bar(comp):
     bar_center_y = BASE_DEPTH / 2 + PRINT_GAP + BAR_DIAMETER / 2
     bar_center_z = TENON_HEIGHT
-
-    bar = horizontal_cylinder(
-        comp, 'Display bar', bar_center_y, bar_center_z,
-        BAR_WIDTH, BAR_DIAMETER,
+    manager = adsk.fusion.TemporaryBRepManager.get()
+    bar_body = cylinder_body(
+        manager,
+        (-BAR_WIDTH / 2, bar_center_y, bar_center_z),
+        (BAR_WIDTH / 2, bar_center_y, bar_center_z),
+        BAR_DIAMETER,
     )
-    bar_body = bar.bodies.item(0)
-    bar_body.name = 'Bracelet display bar'
-    socket = vertical_cylinder(
-        comp, 'Socket boss', 0, bar_center_y, 0,
-        SOCKET_BOSS_DIAMETER, TENON_HEIGHT,
-        adsk.fusion.FeatureOperations.NewBodyFeatureOperation,
+    socket_boss = cylinder_body(
+        manager,
+        (0, bar_center_y, 0),
+        (0, bar_center_y, TENON_HEIGHT),
+        SOCKET_BOSS_DIAMETER,
     )
-    tool_bodies = adsk.core.ObjectCollection.create()
-    tool_bodies.add(socket.bodies.item(0))
-    combine_input = comp.features.combineFeatures.createInput(
+    manager.booleanOperation(
         bar_body,
-        tool_bodies,
+        socket_boss,
+        adsk.fusion.BooleanTypes.UnionBooleanType,
     )
-    combine_input.operation = adsk.fusion.FeatureOperations.JoinFeatureOperation
-    combine_input.isKeepToolBodies = False
-    comp.features.combineFeatures.add(combine_input).name = 'Join socket to bar'
-
-    socket_hole = vertical_cylinder(
-        comp, 'Socket hole', 0, bar_center_y, 0,
-        POST_DIAMETER + 2 * FIT_CLEARANCE, TENON_HEIGHT,
-        adsk.fusion.FeatureOperations.NewBodyFeatureOperation,
+    socket_hole = cylinder_body(
+        manager,
+        (0, bar_center_y, 0),
+        (0, bar_center_y, TENON_HEIGHT),
+        POST_DIAMETER + 2 * FIT_CLEARANCE,
     )
-    cutter_bodies = adsk.core.ObjectCollection.create()
-    cutter_bodies.add(socket_hole.bodies.item(0))
-    cut_input = comp.features.combineFeatures.createInput(
+    manager.booleanOperation(
         bar_body,
-        cutter_bodies,
+        socket_hole,
+        adsk.fusion.BooleanTypes.DifferenceBooleanType,
     )
-    cut_input.operation = adsk.fusion.FeatureOperations.CutFeatureOperation
-    cut_input.isKeepToolBodies = False
-    comp.features.combineFeatures.add(cut_input).name = 'Cut socket hole'
+
+    base_feature = comp.features.baseFeatures.add()
+    base_feature.name = 'Display bar with integrated socket'
+    base_feature.startEdit()
+    result = comp.bRepBodies.add(bar_body, base_feature)
+    result.name = 'Bracelet display bar'
+    base_feature.finishEdit()
 
 
 def run(context):
