@@ -70,6 +70,35 @@ def vertical_cylinder(comp, name, center_x, center_y, z, diameter, height,
     return feature
 
 
+def vertical_ring(comp, name, center_x, center_y, z, outer_diameter,
+                  inner_diameter, height, participant_bodies):
+    plane = comp.xYConstructionPlane if z == 0 else offset_plane(comp, z)
+    sketch = comp.sketches.add(plane)
+    sketch.name = name
+    circles = sketch.sketchCurves.sketchCircles
+    center = adsk.core.Point3D.create(cm(center_x), cm(center_y), 0)
+    circles.addByCenterRadius(center, cm(outer_diameter / 2))
+    circles.addByCenterRadius(center, cm(inner_diameter / 2))
+
+    ring_profile = None
+    for index in range(sketch.profiles.count):
+        profile = sketch.profiles.item(index)
+        if profile.profileLoops.count == 2:
+            ring_profile = profile
+            break
+
+    extrudes = comp.features.extrudeFeatures
+    extrude_input = extrudes.createInput(
+        ring_profile,
+        adsk.fusion.FeatureOperations.JoinFeatureOperation,
+    )
+    extrude_input.setDistanceExtent(False, value(height))
+    extrude_input.participantBodies = participant_bodies
+    feature = extrudes.add(extrude_input)
+    feature.name = name
+    return feature
+
+
 def horizontal_cylinder(comp, name, center_y, center_z, length, diameter):
     sketch = comp.sketches.add(comp.yZConstructionPlane)
     sketch.name = name
@@ -117,15 +146,10 @@ def build_bar(comp):
     )
     bar_body = bar.bodies.item(0)
     bar_body.name = 'Bracelet display bar'
-    vertical_cylinder(
+    vertical_ring(
         comp, 'Socket boss', 0, bar_center_y, 0,
-        SOCKET_BOSS_DIAMETER, TENON_HEIGHT,
-        adsk.fusion.FeatureOperations.JoinFeatureOperation, [bar_body],
-    )
-    vertical_cylinder(
-        comp, 'Post socket', 0, bar_center_y, -0.1,
-        POST_DIAMETER + 2 * FIT_CLEARANCE, TENON_HEIGHT + 0.2,
-        adsk.fusion.FeatureOperations.CutFeatureOperation, [bar_body],
+        SOCKET_BOSS_DIAMETER, POST_DIAMETER + 2 * FIT_CLEARANCE,
+        TENON_HEIGHT, [bar_body],
     )
 
 
