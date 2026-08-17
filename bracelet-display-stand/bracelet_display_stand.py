@@ -70,34 +70,6 @@ def vertical_cylinder(comp, name, center_x, center_y, z, diameter, height,
     return feature
 
 
-def vertical_ring(comp, name, center_x, center_y, z, outer_diameter,
-                  inner_diameter, height):
-    plane = comp.xYConstructionPlane if z == 0 else offset_plane(comp, z)
-    sketch = comp.sketches.add(plane)
-    sketch.name = name
-    circles = sketch.sketchCurves.sketchCircles
-    center = adsk.core.Point3D.create(cm(center_x), cm(center_y), 0)
-    circles.addByCenterRadius(center, cm(outer_diameter / 2))
-    circles.addByCenterRadius(center, cm(inner_diameter / 2))
-
-    ring_profile = None
-    for index in range(sketch.profiles.count):
-        profile = sketch.profiles.item(index)
-        if profile.profileLoops.count == 2:
-            ring_profile = profile
-            break
-
-    extrudes = comp.features.extrudeFeatures
-    extrude_input = extrudes.createInput(
-        ring_profile,
-        adsk.fusion.FeatureOperations.NewBodyFeatureOperation,
-    )
-    extrude_input.setDistanceExtent(False, value(height))
-    feature = extrudes.add(extrude_input)
-    feature.name = name
-    return feature
-
-
 def horizontal_cylinder(comp, name, center_y, center_z, length, diameter):
     sketch = comp.sketches.add(comp.yZConstructionPlane)
     sketch.name = name
@@ -145,10 +117,10 @@ def build_bar(comp):
     )
     bar_body = bar.bodies.item(0)
     bar_body.name = 'Bracelet display bar'
-    socket = vertical_ring(
+    socket = vertical_cylinder(
         comp, 'Socket boss', 0, bar_center_y, 0,
-        SOCKET_BOSS_DIAMETER, POST_DIAMETER + 2 * FIT_CLEARANCE,
-        TENON_HEIGHT,
+        SOCKET_BOSS_DIAMETER, TENON_HEIGHT,
+        adsk.fusion.FeatureOperations.NewBodyFeatureOperation,
     )
     tool_bodies = adsk.core.ObjectCollection.create()
     tool_bodies.add(socket.bodies.item(0))
@@ -159,6 +131,21 @@ def build_bar(comp):
     combine_input.operation = adsk.fusion.FeatureOperations.JoinFeatureOperation
     combine_input.isKeepToolBodies = False
     comp.features.combineFeatures.add(combine_input).name = 'Join socket to bar'
+
+    socket_hole = vertical_cylinder(
+        comp, 'Socket hole', 0, bar_center_y, 0,
+        POST_DIAMETER + 2 * FIT_CLEARANCE, TENON_HEIGHT,
+        adsk.fusion.FeatureOperations.NewBodyFeatureOperation,
+    )
+    cutter_bodies = adsk.core.ObjectCollection.create()
+    cutter_bodies.add(socket_hole.bodies.item(0))
+    cut_input = comp.features.combineFeatures.createInput(
+        bar_body,
+        cutter_bodies,
+    )
+    cut_input.operation = adsk.fusion.FeatureOperations.CutFeatureOperation
+    cut_input.isKeepToolBodies = False
+    comp.features.combineFeatures.add(cut_input).name = 'Cut socket hole'
 
 
 def run(context):
