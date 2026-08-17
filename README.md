@@ -46,9 +46,9 @@ final geometry depends on physical measurements of the specific board.
 `bracelet-display-stand/`
 
 A two-piece T-shaped stand for displaying bracelets. The base and upright form
-one printable component; the removable display bar uses a configurable
-press-fit socket. Its overall size, bar dimensions, post dimensions, and fit
-clearance can all be changed at the top of the script.
+one printable body; the removable display bar uses a configurable press-fit
+socket. Its overall size, bar dimensions, post dimensions, and fit clearance
+can all be changed at the top of the script.
 
 ## How the workflow works
 
