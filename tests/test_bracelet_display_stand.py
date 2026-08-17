@@ -45,6 +45,15 @@ class FakeBaseFeature:
 
 
 class BraceletDisplayStandTest(unittest.TestCase):
+    def test_assembled_t_joint_starts_at_152_mm(self):
+        self.assertEqual(module.ASSEMBLED_BAR_BOTTOM_HEIGHT, 152.0)
+        self.assertEqual(
+            module.ASSEMBLED_BAR_BOTTOM_HEIGHT
+            + module.TENON_HEIGHT
+            + module.BAR_DIAMETER / 2,
+            178.0,
+        )
+
     def test_bar_is_added_as_one_body_after_union_and_cut(self):
         manager = FakeManager()
         bodies = [object(), object(), object()]
