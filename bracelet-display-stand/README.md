@@ -10,10 +10,12 @@ only one component. The display bar is placed flat behind the base with a
 configurable `PRINT_GAP`, rather than overlapping the upright in its assembled
 position.
 
-The display bar uses a slim 34 × 20 mm profile with rounded upper edges and a
-configurable `BAR_EDGE_RADIUS`. Its flat lower face preserves enough material
-around the post socket. It has no square end stops, keeping the contact surface
-smooth for bracelets.
+The display bar is a 24 mm cylinder with a round socket boss underneath. The
+upright is also cylindrical and uses a slimmer 18 mm diameter, with a wider
+round foot where it meets the base. All diameters are configurable.
+
+The cylindrical bar is generated horizontally and may require slicer supports
+along its lower surface.
 
 Adjust the dimensions and `FIT_CLEARANCE` at the beginning of the script for the
-material and printer in use. Default assembled size: 230 × 95 × 200 mm.
+material and printer in use. Default assembled size: 230 × 95 × 206 mm.
