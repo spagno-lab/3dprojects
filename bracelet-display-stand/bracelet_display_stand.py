@@ -8,7 +8,7 @@ BASE_DEPTH = 95.0
 BASE_HEIGHT = 10.0
 POST_WIDTH = 20.0
 POST_DEPTH = 28.0
-BAR_BOTTOM_HEIGHT = 180.0
+ASSEMBLED_BAR_BOTTOM_HEIGHT = 180.0
 TENON_HEIGHT = 14.0
 BAR_WIDTH = 230.0
 BAR_DEPTH = 38.0
@@ -16,6 +16,7 @@ BAR_HEIGHT = 28.0
 END_STOP_THICKNESS = 6.0
 END_STOP_OVERHANG = 3.0
 FIT_CLEARANCE = 0.35
+PRINT_GAP = 15.0
 
 
 def cm(mm):
@@ -57,7 +58,7 @@ def build_stand(comp):
                adsk.fusion.FeatureOperations.NewBodyFeatureOperation)
     stand_body = base.bodies.item(0)
     stand_body.name = 'Bracelet stand'
-    post_height = BAR_BOTTOM_HEIGHT + TENON_HEIGHT - BASE_HEIGHT
+    post_height = ASSEMBLED_BAR_BOTTOM_HEIGHT + TENON_HEIGHT - BASE_HEIGHT
     box(comp, 'Upright post', -POST_WIDTH / 2, -POST_DEPTH / 2, BASE_HEIGHT,
         POST_WIDTH, POST_DEPTH, post_height,
         adsk.fusion.FeatureOperations.JoinFeatureOperation, [stand_body])
@@ -67,21 +68,25 @@ def build_stand(comp):
 
 
 def build_bar(comp):
-    bar = box(comp, 'Display bar', -BAR_WIDTH / 2, -BAR_DEPTH / 2,
-              BAR_BOTTOM_HEIGHT, BAR_WIDTH, BAR_DEPTH, BAR_HEIGHT,
+    stop_depth = BAR_DEPTH + 2 * END_STOP_OVERHANG
+    stop_height = BAR_HEIGHT + 2 * END_STOP_OVERHANG
+    bar_center_y = BASE_DEPTH / 2 + PRINT_GAP + stop_depth / 2
+    bar_bottom_z = END_STOP_OVERHANG
+
+    bar = box(comp, 'Display bar', -BAR_WIDTH / 2,
+              bar_center_y - BAR_DEPTH / 2, bar_bottom_z,
+              BAR_WIDTH, BAR_DEPTH, BAR_HEIGHT,
               adsk.fusion.FeatureOperations.NewBodyFeatureOperation)
     bar_body = bar.bodies.item(0)
     bar_body.name = 'Bracelet display bar'
-    stop_depth = BAR_DEPTH + 2 * END_STOP_OVERHANG
-    stop_height = BAR_HEIGHT + 2 * END_STOP_OVERHANG
     for name, x in (('Left end stop', -BAR_WIDTH / 2),
                     ('Right end stop', BAR_WIDTH / 2 - END_STOP_THICKNESS)):
-        box(comp, name, x, -stop_depth / 2,
-            BAR_BOTTOM_HEIGHT - END_STOP_OVERHANG,
+        box(comp, name, x, bar_center_y - stop_depth / 2, 0,
             END_STOP_THICKNESS, stop_depth, stop_height,
             adsk.fusion.FeatureOperations.JoinFeatureOperation, [bar_body])
     box(comp, 'Post socket', -POST_WIDTH / 2 - FIT_CLEARANCE,
-        -POST_DEPTH / 2 - FIT_CLEARANCE, BAR_BOTTOM_HEIGHT - 0.1,
+        bar_center_y - POST_DEPTH / 2 - FIT_CLEARANCE,
+        bar_bottom_z - 0.1,
         POST_WIDTH + 2 * FIT_CLEARANCE, POST_DEPTH + 2 * FIT_CLEARANCE,
         TENON_HEIGHT + 0.2,
         adsk.fusion.FeatureOperations.CutFeatureOperation, [bar_body])
@@ -100,7 +105,7 @@ def run(context):
         build_stand(root)
         build_bar(root)
         app.activeViewport.fit()
-        ui.messageBox('Stand generated as two bodies. Export each separately for printing.')
+        ui.messageBox('Stand generated as two separated bodies in print orientation.')
     except Exception:
         if ui:
             ui.messageBox('Failed:\n{}'.format(traceback.format_exc()))
