@@ -11,6 +11,8 @@ configurable `PRINT_GAP`, rather than overlapping the upright in its assembled
 position.
 
 The display bar is a 24 mm cylinder with a round socket boss underneath. The
+boss is generated directly as a hollow ring, ensuring that the blind mounting
+socket remains open on its underside without relying on a boolean cut. The
 upright is also cylindrical and uses a slimmer 18 mm diameter, with a wider
 round foot where it meets the base. All diameters are configurable.
 
