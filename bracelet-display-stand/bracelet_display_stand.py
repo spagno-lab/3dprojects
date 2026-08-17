@@ -55,7 +55,14 @@ def round_top_edges(comp, body):
     edges = adsk.core.ObjectCollection.create()
     for edge in body.edges:
         line = adsk.core.Line3D.cast(edge.geometry)
-        is_long_edge = line and abs(line.direction.x) > 0.99
+        is_long_edge = False
+        if line and edge.startVertex and edge.endVertex:
+            direction = edge.startVertex.geometry.vectorTo(
+                edge.endVertex.geometry)
+            is_long_edge = (
+                abs(direction.x) > abs(direction.y)
+                and abs(direction.x) > abs(direction.z)
+            )
         is_top_edge = edge.boundingBox.minPoint.z > cm(BAR_HEIGHT) - 0.01
         if is_long_edge and is_top_edge:
             edges.add(edge)
