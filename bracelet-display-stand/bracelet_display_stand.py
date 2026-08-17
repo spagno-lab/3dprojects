@@ -11,10 +11,9 @@ POST_DEPTH = 28.0
 ASSEMBLED_BAR_BOTTOM_HEIGHT = 180.0
 TENON_HEIGHT = 14.0
 BAR_WIDTH = 230.0
-BAR_DEPTH = 38.0
-BAR_HEIGHT = 28.0
-END_STOP_THICKNESS = 6.0
-END_STOP_OVERHANG = 3.0
+BAR_DEPTH = 34.0
+BAR_HEIGHT = 20.0
+BAR_EDGE_RADIUS = 9.0
 FIT_CLEARANCE = 0.35
 PRINT_GAP = 15.0
 
@@ -52,6 +51,23 @@ def box(comp, name, x, y, z, width, depth, height, operation,
     return feature
 
 
+def round_top_edges(comp, body):
+    edges = adsk.core.ObjectCollection.create()
+    for edge in body.edges:
+        line = adsk.core.Line3D.cast(edge.geometry)
+        is_long_edge = line and abs(line.direction.x) > 0.99
+        is_top_edge = edge.boundingBox.minPoint.z > cm(BAR_HEIGHT) - 0.01
+        if is_long_edge and is_top_edge:
+            edges.add(edge)
+    if edges.count != 2:
+        raise RuntimeError(f'Expected 2 display-bar top edges, found {edges.count}')
+    fillet_input = comp.features.filletFeatures.createInput()
+    fillet_input.addConstantRadiusEdgeSet(
+        edges, value(BAR_EDGE_RADIUS), True)
+    fillet = comp.features.filletFeatures.add(fillet_input)
+    fillet.name = 'Rounded display bar'
+
+
 def build_stand(comp):
     base = box(comp, 'Base', -BASE_WIDTH / 2, -BASE_DEPTH / 2, 0,
                BASE_WIDTH, BASE_DEPTH, BASE_HEIGHT,
@@ -68,10 +84,8 @@ def build_stand(comp):
 
 
 def build_bar(comp):
-    stop_depth = BAR_DEPTH + 2 * END_STOP_OVERHANG
-    stop_height = BAR_HEIGHT + 2 * END_STOP_OVERHANG
-    bar_center_y = BASE_DEPTH / 2 + PRINT_GAP + stop_depth / 2
-    bar_bottom_z = END_STOP_OVERHANG
+    bar_center_y = BASE_DEPTH / 2 + PRINT_GAP + BAR_DEPTH / 2
+    bar_bottom_z = 0
 
     bar = box(comp, 'Display bar', -BAR_WIDTH / 2,
               bar_center_y - BAR_DEPTH / 2, bar_bottom_z,
@@ -79,11 +93,7 @@ def build_bar(comp):
               adsk.fusion.FeatureOperations.NewBodyFeatureOperation)
     bar_body = bar.bodies.item(0)
     bar_body.name = 'Bracelet display bar'
-    for name, x in (('Left end stop', -BAR_WIDTH / 2),
-                    ('Right end stop', BAR_WIDTH / 2 - END_STOP_THICKNESS)):
-        box(comp, name, x, bar_center_y - stop_depth / 2, 0,
-            END_STOP_THICKNESS, stop_depth, stop_height,
-            adsk.fusion.FeatureOperations.JoinFeatureOperation, [bar_body])
+    round_top_edges(comp, bar_body)
     box(comp, 'Post socket', -POST_WIDTH / 2 - FIT_CLEARANCE,
         bar_center_y - POST_DEPTH / 2 - FIT_CLEARANCE,
         bar_bottom_z - 0.1,
