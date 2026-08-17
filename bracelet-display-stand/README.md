@@ -21,4 +21,5 @@ The cylindrical bar is generated horizontally and may require slicer supports
 along its lower surface.
 
 Adjust the dimensions and `FIT_CLEARANCE` at the beginning of the script for the
-material and printer in use. Default assembled size: 230 × 95 × 206 mm.
+material and printer in use. The lower end of the T-joint sits 152 mm above the
+bottom of the base when assembled. Default assembled size: 230 × 95 × 178 mm.
