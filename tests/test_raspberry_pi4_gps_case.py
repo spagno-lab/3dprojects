@@ -34,23 +34,14 @@ class RaspberryPi4GpsCaseTest(unittest.TestCase):
         self.assertEqual(module.GPS_BOARD_LENGTH, 23.0)
         self.assertEqual(module.SMA_PROJECTION, 10.0)
         self.assertEqual(module.SMA_CENTER_FROM_RIGHT, 6.0)
-        self.assertEqual(module.SMA_SLOT_WIDTH, 9.0)
-        self.assertEqual(module.GPS_RIGHT_RAIL_FROM_CAVITY, 44.0)
+        self.assertEqual(module.SMA_SLOT_WIDTH, 10.0)
 
-    def test_cradle_positions_right_rail_and_faces_offset_sma_toward_rear(self):
+    def test_cradle_centres_board_and_faces_offset_sma_toward_rear(self):
         outer_l = module.CASE_INNER_LENGTH + 2 * module.WALL
         outer_w = module.CASE_INNER_WIDTH + 2 * module.WALL
         layout = module.gps_cradle_layout(outer_l, outer_w, 110.0)
 
-        self.assertEqual(
-            layout['right_rail_x'] - (110.0 + module.WALL),
-            module.GPS_RIGHT_RAIL_FROM_CAVITY,
-        )
-        self.assertAlmostEqual(
-            layout['right_rail_x']
-            - (layout['x'] + module.GPS_BOARD_WIDTH),
-            module.CLEARANCE,
-        )
+        self.assertEqual(layout['center_x'], 110.0 + outer_l / 2)
         self.assertEqual(
             layout['x'] + module.GPS_BOARD_WIDTH - layout['sma_center_x'],
             module.SMA_CENTER_FROM_RIGHT,
@@ -92,6 +83,29 @@ class RaspberryPi4GpsCaseTest(unittest.TestCase):
         self.assertIn('GPS rear stop left', names)
         self.assertNotIn('GPS rear stop right', names)
         self.assertTrue(all(min(feature[4:7]) > 0 for feature in features))
+
+    def test_gps_reference_is_one_separate_body_with_joined_sma(self):
+        features = []
+
+        def capture(comp, name, x, y, z, length, width, height,
+                    operation='new-body'):
+            features.append((name, x, y, z, length, width, height, operation))
+
+        with mock.patch.object(module, 'rectangle_feature', side_effect=capture):
+            module.gps_reference(None, 110.0)
+
+        pcb, sma = features
+        self.assertEqual(pcb[0], 'GPS reference PCB')
+        self.assertEqual(pcb[4:7], (18.0, 23.0, 1.6))
+        self.assertEqual(pcb[7], 'new-body')
+        self.assertEqual(sma[0], 'GPS reference SMA')
+        self.assertEqual(sma[4:7], (10.0, 10.0, 1.6))
+        self.assertEqual(sma[7], 'join')
+        self.assertEqual(sma[2], pcb[2] + pcb[5])
+        self.assertEqual(
+            pcb[1] + pcb[4] - (sma[1] + sma[4] / 2),
+            module.SMA_CENTER_FROM_RIGHT,
+        )
 
 
 if __name__ == '__main__':
