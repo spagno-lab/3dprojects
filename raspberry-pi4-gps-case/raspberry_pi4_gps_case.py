@@ -3,14 +3,16 @@ import adsk.fusion
 import traceback
 
 
-# Photo-derived dimensions in millimetres. The board is mounted with the SMA and
-# header on opposite ends of its long axis. Confirm these values with calipers
-# before the final print; perspective makes the ruler in the reference photo
-# unsuitable for sub-millimetre measurements.
-GPS_BOARD_LENGTH = 30.0
-GPS_BOARD_WIDTH = 22.0
+# User-measured dimensions in millimetres. With the SMA pointing toward the
+# rear/top edge of the lid, its axis is measured from the board's left edge.
+# Flipping the module mirrors that 6 mm offset to the right without changing
+# the cradle envelope.
+GPS_BOARD_LENGTH = 23.0
+GPS_BOARD_WIDTH = 18.0
 GPS_BOARD_THICKNESS = 1.6
 GPS_MAX_COMPONENT_HEIGHT = 8.0
+SMA_PROJECTION = 10.0
+SMA_CENTER_FROM_SIDE = 6.0
 SMA_SLOT_WIDTH = 9.0
 GPS_CLIP_THICKNESS = 1.6
 GPS_CLIP_LENGTH = 5.0
@@ -88,7 +90,7 @@ def rear_wall_hole(comp, name, center_x, center_z, wall_y, diameter):
 
 
 def gps_cradle_layout(outer_l, outer_w, x_offset=0):
-    """Return the board envelope with its SMA edge against the rear wall."""
+    """Return the board envelope with its offset SMA facing the rear wall."""
     board_x = x_offset + (outer_l - GPS_BOARD_WIDTH) / 2
     # Leave one clip thickness behind the PCB so the rear stops remain fully
     # inside the case wall. The SMA barrel bridges this small setback.
@@ -98,6 +100,8 @@ def gps_cradle_layout(outer_l, outer_w, x_offset=0):
         'y': board_rear_y - GPS_BOARD_LENGTH,
         'rear_y': board_rear_y,
         'center_x': board_x + GPS_BOARD_WIDTH / 2,
+        'sma_center_x': board_x + SMA_CENTER_FROM_SIDE,
+        'sma_tip_y': board_rear_y + SMA_PROJECTION,
     }
 
 
@@ -156,10 +160,10 @@ def body_shell(comp):
                       WALL + 2, 18.0, 8.0, adsk.fusion.FeatureOperations.CutFeatureOperation)
 
     # Top-open slot: the lid-mounted board drops in with its SMA connector
-    # already fitted. The slot shares the cradle centreline.
+    # already fitted. The connector is offset 6 mm from the board's left edge.
     gps = gps_cradle_layout(outer_l, outer_w)
     rectangle_feature(
-        comp, 'GPS SMA opening', gps['center_x'] - SMA_SLOT_WIDTH / 2,
+        comp, 'GPS SMA opening', gps['sma_center_x'] - SMA_SLOT_WIDTH / 2,
         outer_w - WALL - 1, outer_h - 12.0,
         SMA_SLOT_WIDTH, WALL + 2, 13.0,
         adsk.fusion.FeatureOperations.CutFeatureOperation
