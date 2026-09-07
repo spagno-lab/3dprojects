@@ -28,17 +28,23 @@ spec.loader.exec_module(module)
 
 
 class RaspberryPi4GpsCaseTest(unittest.TestCase):
-    def test_photo_reference_dimensions(self):
-        self.assertEqual(module.GPS_BOARD_WIDTH, 22.0)
-        self.assertEqual(module.GPS_BOARD_LENGTH, 30.0)
+    def test_user_measured_dimensions(self):
+        self.assertEqual(module.GPS_BOARD_WIDTH, 18.0)
+        self.assertEqual(module.GPS_BOARD_LENGTH, 23.0)
+        self.assertEqual(module.SMA_PROJECTION, 10.0)
+        self.assertEqual(module.SMA_CENTER_FROM_SIDE, 6.0)
         self.assertEqual(module.SMA_SLOT_WIDTH, 9.0)
 
-    def test_cradle_centres_board_and_faces_sma_toward_rear(self):
+    def test_cradle_centres_board_and_faces_offset_sma_toward_rear(self):
         outer_l = module.CASE_INNER_LENGTH + 2 * module.WALL
         outer_w = module.CASE_INNER_WIDTH + 2 * module.WALL
         layout = module.gps_cradle_layout(outer_l, outer_w, 110.0)
 
         self.assertEqual(layout['center_x'], 110.0 + outer_l / 2)
+        self.assertEqual(
+            layout['sma_center_x'] - layout['x'],
+            module.SMA_CENTER_FROM_SIDE,
+        )
         self.assertEqual(
             layout['rear_y'],
             outer_w
@@ -49,6 +55,10 @@ class RaspberryPi4GpsCaseTest(unittest.TestCase):
         self.assertEqual(
             layout['rear_y'] - layout['y'],
             module.GPS_BOARD_LENGTH,
+        )
+        self.assertEqual(
+            layout['sma_tip_y'] - layout['rear_y'],
+            module.SMA_PROJECTION,
         )
 
 
