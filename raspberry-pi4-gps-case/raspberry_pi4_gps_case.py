@@ -12,11 +12,11 @@ GPS_BOARD_THICKNESS = 1.6
 GPS_MAX_COMPONENT_HEIGHT = 8.0
 SMA_PROJECTION = 10.0
 SMA_CENTER_FROM_RIGHT = 6.0
-SMA_SLOT_WIDTH = 9.0
-GPS_RIGHT_RAIL_FROM_CAVITY = 44.0
+SMA_SLOT_WIDTH = 10.0
 GPS_CLIP_THICKNESS = 1.6
 GPS_CLIP_LENGTH = 5.0
 GPS_CLIP_OVERHANG = 1.0
+GPS_REFERENCE_GAP = 0.2
 
 WALL = 2.4
 FLOOR = 2.4
@@ -91,9 +91,7 @@ def rear_wall_hole(comp, name, center_x, center_z, wall_y, diameter):
 
 def gps_cradle_layout(outer_l, outer_w, x_offset=0):
     """Return the board envelope with its offset SMA facing the rear wall."""
-    cavity_left_x = x_offset + WALL
-    right_rail_x = cavity_left_x + GPS_RIGHT_RAIL_FROM_CAVITY
-    board_x = right_rail_x - GPS_BOARD_WIDTH - CLEARANCE
+    board_x = x_offset + (outer_l - GPS_BOARD_WIDTH) / 2
     # Leave one clip thickness behind the PCB so the rear stops remain fully
     # inside the case wall. The SMA barrel bridges this small setback.
     board_rear_y = outer_w - WALL - GPS_CLIP_THICKNESS - CLEARANCE
@@ -102,7 +100,6 @@ def gps_cradle_layout(outer_l, outer_w, x_offset=0):
         'y': board_rear_y - GPS_BOARD_LENGTH,
         'rear_y': board_rear_y,
         'center_x': board_x + GPS_BOARD_WIDTH / 2,
-        'right_rail_x': right_rail_x,
         'sma_center_x': board_x + GPS_BOARD_WIDTH - SMA_CENTER_FROM_RIGHT,
         'sma_tip_y': board_rear_y + SMA_PROJECTION,
     }
@@ -211,7 +208,7 @@ def lid(comp, x_offset=0):
     gps_x = gps['x']
     gps_y = gps['y']
     rail_x_left = gps_x - CLEARANCE - GPS_CLIP_THICKNESS
-    rail_x_right = gps['right_rail_x']
+    rail_x_right = gps_x + GPS_BOARD_WIDTH + CLEARANCE
     rail_y = gps_y + 2.0
     rail_length = GPS_BOARD_LENGTH - 4.0
     rail_h = GPS_BOARD_THICKNESS + 1.3
@@ -267,6 +264,25 @@ def lid(comp, x_offset=0):
                           adsk.fusion.FeatureOperations.CutFeatureOperation)
 
 
+def gps_reference(comp, x_offset=0):
+    """Add a third body representing the measured GPS PCB and SMA envelope."""
+    outer_l = CASE_INNER_LENGTH + 2 * WALL
+    outer_w = CASE_INNER_WIDTH + 2 * WALL
+    gps = gps_cradle_layout(outer_l, outer_w, x_offset)
+    reference_z = LID_THICKNESS + GPS_REFERENCE_GAP
+
+    rectangle_feature(
+        comp, 'GPS reference PCB', gps['x'], gps['y'], reference_z,
+        GPS_BOARD_WIDTH, GPS_BOARD_LENGTH, GPS_BOARD_THICKNESS,
+    )
+    rectangle_feature(
+        comp, 'GPS reference SMA', gps['sma_center_x'] - SMA_SLOT_WIDTH / 2,
+        gps['rear_y'], reference_z, SMA_SLOT_WIDTH, SMA_PROJECTION,
+        GPS_BOARD_THICKNESS,
+        adsk.fusion.FeatureOperations.JoinFeatureOperation,
+    )
+
+
 def run(context):
     ui = None
     try:
@@ -280,9 +296,10 @@ def run(context):
         root = design.rootComponent
         body_shell(root)
         lid(root, 110.0)
+        gps_reference(root, 110.0)
         app.activeViewport.fit()
-        ui.messageBox('Case generated. Body and lid are separate bodies for STL export. '
-                      'The GPS cradle faces the SMA connector toward its rear opening.')
+        ui.messageBox('Case generated. Body, lid, and GPS reference are three separate '
+                      'bodies. The reference shows the measured PCB and SMA envelope.')
     except Exception:
         if ui:
             ui.messageBox('Failed:\n{}'.format(traceback.format_exc()))
