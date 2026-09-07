@@ -13,6 +13,7 @@ GPS_MAX_COMPONENT_HEIGHT = 8.0
 SMA_PROJECTION = 10.0
 SMA_CENTER_FROM_RIGHT = 6.0
 SMA_SLOT_WIDTH = 9.0
+GPS_RIGHT_RAIL_FROM_CAVITY = 44.0
 GPS_CLIP_THICKNESS = 1.6
 GPS_CLIP_LENGTH = 5.0
 GPS_CLIP_OVERHANG = 1.0
@@ -90,7 +91,9 @@ def rear_wall_hole(comp, name, center_x, center_z, wall_y, diameter):
 
 def gps_cradle_layout(outer_l, outer_w, x_offset=0):
     """Return the board envelope with its offset SMA facing the rear wall."""
-    board_x = x_offset + (outer_l - GPS_BOARD_WIDTH) / 2
+    cavity_left_x = x_offset + WALL
+    right_rail_x = cavity_left_x + GPS_RIGHT_RAIL_FROM_CAVITY
+    board_x = right_rail_x - GPS_BOARD_WIDTH - CLEARANCE
     # Leave one clip thickness behind the PCB so the rear stops remain fully
     # inside the case wall. The SMA barrel bridges this small setback.
     board_rear_y = outer_w - WALL - GPS_CLIP_THICKNESS - CLEARANCE
@@ -99,6 +102,7 @@ def gps_cradle_layout(outer_l, outer_w, x_offset=0):
         'y': board_rear_y - GPS_BOARD_LENGTH,
         'rear_y': board_rear_y,
         'center_x': board_x + GPS_BOARD_WIDTH / 2,
+        'right_rail_x': right_rail_x,
         'sma_center_x': board_x + GPS_BOARD_WIDTH - SMA_CENTER_FROM_RIGHT,
         'sma_tip_y': board_rear_y + SMA_PROJECTION,
     }
@@ -207,7 +211,7 @@ def lid(comp, x_offset=0):
     gps_x = gps['x']
     gps_y = gps['y']
     rail_x_left = gps_x - CLEARANCE - GPS_CLIP_THICKNESS
-    rail_x_right = gps_x + GPS_BOARD_WIDTH + CLEARANCE
+    rail_x_right = gps['right_rail_x']
     rail_y = gps_y + 2.0
     rail_length = GPS_BOARD_LENGTH - 4.0
     rail_h = GPS_BOARD_THICKNESS + 1.3

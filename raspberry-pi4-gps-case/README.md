@@ -16,6 +16,8 @@ carrier:
 - four-pin Dupont header on the opposite short edge, with an unobstructed cable
   path toward the Raspberry Pi;
 - component side facing the inside of the case;
+- inner face of the right retaining rail positioned 44 mm from the left edge
+  of the case cavity; the PCB and SMA opening share this positioning reference;
 - four short side clips grip the PCB edges without spanning the SMA or header;
 - the rear-right corner stop is omitted so it cannot obstruct the offset SMA.
 
