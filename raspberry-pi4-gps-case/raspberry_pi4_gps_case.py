@@ -3,11 +3,18 @@ import adsk.fusion
 import traceback
 
 
-# Provisional dimensions in millimetres. Change these after measuring the board.
-GPS_LENGTH = 30.0
-GPS_WIDTH = 22.0
-GPS_MAX_HEIGHT = 8.0
-SMA_HOLE_DIAMETER = 7.0
+# Photo-derived dimensions in millimetres. The board is mounted with the SMA and
+# header on opposite ends of its long axis. Confirm these values with calipers
+# before the final print; perspective makes the ruler in the reference photo
+# unsuitable for sub-millimetre measurements.
+GPS_BOARD_LENGTH = 30.0
+GPS_BOARD_WIDTH = 22.0
+GPS_BOARD_THICKNESS = 1.6
+GPS_MAX_COMPONENT_HEIGHT = 8.0
+SMA_SLOT_WIDTH = 9.0
+GPS_CLIP_THICKNESS = 1.6
+GPS_CLIP_LENGTH = 5.0
+GPS_CLIP_OVERHANG = 1.0
 
 WALL = 2.4
 FLOOR = 2.4
@@ -80,6 +87,20 @@ def rear_wall_hole(comp, name, center_x, center_z, wall_y, diameter):
     return feature
 
 
+def gps_cradle_layout(outer_l, outer_w, x_offset=0):
+    """Return the board envelope with its SMA edge against the rear wall."""
+    board_x = x_offset + (outer_l - GPS_BOARD_WIDTH) / 2
+    # Leave one clip thickness behind the PCB so the rear stops remain fully
+    # inside the case wall. The SMA barrel bridges this small setback.
+    board_rear_y = outer_w - WALL - GPS_CLIP_THICKNESS - CLEARANCE
+    return {
+        'x': board_x,
+        'y': board_rear_y - GPS_BOARD_LENGTH,
+        'rear_y': board_rear_y,
+        'center_x': board_x + GPS_BOARD_WIDTH / 2,
+    }
+
+
 def body_shell(comp):
     outer_l = CASE_INNER_LENGTH + 2 * WALL
     outer_w = CASE_INNER_WIDTH + 2 * WALL
@@ -134,13 +155,13 @@ def body_shell(comp):
     rectangle_feature(comp, 'MicroSD opening', -1.0, 23.0, 4.0,
                       WALL + 2, 18.0, 8.0, adsk.fusion.FeatureOperations.CutFeatureOperation)
 
-    # The SMA hole shares the GPS cradle centreline, so both move together.
-    gps_x = (outer_l - GPS_LENGTH) / 2
-    sma_center_x = gps_x + GPS_LENGTH / 2
+    # Top-open slot: the lid-mounted board drops in with its SMA connector
+    # already fitted. The slot shares the cradle centreline.
+    gps = gps_cradle_layout(outer_l, outer_w)
     rectangle_feature(
-        comp, 'GPS SMA opening', sma_center_x - SMA_HOLE_DIAMETER / 2,
+        comp, 'GPS SMA opening', gps['center_x'] - SMA_SLOT_WIDTH / 2,
         outer_w - WALL - 1, outer_h - 12.0,
-        SMA_HOLE_DIAMETER, WALL + 2, 13.0,
+        SMA_SLOT_WIDTH, WALL + 2, 13.0,
         adsk.fusion.FeatureOperations.CutFeatureOperation
     )
 
@@ -157,8 +178,18 @@ def lid(comp, x_offset=0):
     rectangle_feature(comp, 'Lid rim front', x_offset + inset + 8, inset, LID_THICKNESS,
                       CASE_INNER_LENGTH - 16, rim_t, rim_h,
                       adsk.fusion.FeatureOperations.JoinFeatureOperation)
-    rectangle_feature(comp, 'Lid rim rear', x_offset + inset + 8, outer_w - inset - rim_t, LID_THICKNESS,
-                      CASE_INNER_LENGTH - 16, rim_t, rim_h,
+    gps = gps_cradle_layout(outer_l, outer_w, x_offset)
+    rear_rim_start = x_offset + inset + 8
+    rear_rim_end = rear_rim_start + CASE_INNER_LENGTH - 16
+    cradle_gap_start = gps['x'] - CLEARANCE - GPS_CLIP_THICKNESS - 1.0
+    cradle_gap_end = gps['x'] + GPS_BOARD_WIDTH + CLEARANCE + GPS_CLIP_THICKNESS + 1.0
+    rectangle_feature(comp, 'Lid rim rear left', rear_rim_start,
+                      outer_w - inset - rim_t, LID_THICKNESS,
+                      cradle_gap_start - rear_rim_start, rim_t, rim_h,
+                      adsk.fusion.FeatureOperations.JoinFeatureOperation)
+    rectangle_feature(comp, 'Lid rim rear right', cradle_gap_end,
+                      outer_w - inset - rim_t, LID_THICKNESS,
+                      rear_rim_end - cradle_gap_end, rim_t, rim_h,
                       adsk.fusion.FeatureOperations.JoinFeatureOperation)
     rectangle_feature(comp, 'Lid rim left', x_offset + inset, inset + 8, LID_THICKNESS,
                       rim_t, CASE_INNER_WIDTH - 16, rim_h,
@@ -167,24 +198,48 @@ def lid(comp, x_offset=0):
                       rim_t, CASE_INNER_WIDTH - 16, rim_h,
                       adsk.fusion.FeatureOperations.JoinFeatureOperation)
 
-    # GPS cradle on the inside of the lid. The board slides under four flexible retaining lips.
-    gps_x = x_offset + (outer_l - GPS_LENGTH) / 2
-    gps_y = (outer_w - GPS_WIDTH) / 2
-    rail_gap = GPS_WIDTH + 2 * CLEARANCE
-    rail_h = GPS_MAX_HEIGHT + 1.0
-    rectangle_feature(comp, 'GPS left clip', gps_x - 1.6, gps_y - CLEARANCE, LID_THICKNESS,
-                      1.6, rail_gap, rail_h, adsk.fusion.FeatureOperations.JoinFeatureOperation)
-    rectangle_feature(comp, 'GPS right clip', gps_x + GPS_LENGTH + CLEARANCE, gps_y - CLEARANCE,
-                      LID_THICKNESS, 1.6, rail_gap, rail_h,
+    # GPS cradle on the inside of the lid. Its long axis runs front-to-rear,
+    # leaving the rear SMA connector and front Dupont header unobstructed.
+    # Four short snap lips touch only the PCB side edges, away from components.
+    gps_x = gps['x']
+    gps_y = gps['y']
+    rail_x_left = gps_x - CLEARANCE - GPS_CLIP_THICKNESS
+    rail_x_right = gps_x + GPS_BOARD_WIDTH + CLEARANCE
+    rail_y = gps_y + 2.0
+    rail_length = GPS_BOARD_LENGTH - 4.0
+    rail_h = GPS_BOARD_THICKNESS + 1.3
+    rectangle_feature(comp, 'GPS left rail', rail_x_left, rail_y, LID_THICKNESS,
+                      GPS_CLIP_THICKNESS, rail_length, rail_h,
                       adsk.fusion.FeatureOperations.JoinFeatureOperation)
-    rectangle_feature(comp, 'GPS end stop', gps_x, gps_y - CLEARANCE - 1.6, LID_THICKNESS,
-                      GPS_LENGTH, 1.6, 2.5, adsk.fusion.FeatureOperations.JoinFeatureOperation)
+    rectangle_feature(comp, 'GPS right rail', rail_x_right, rail_y, LID_THICKNESS,
+                      GPS_CLIP_THICKNESS, rail_length, rail_h,
+                      adsk.fusion.FeatureOperations.JoinFeatureOperation)
 
-    lip_z = LID_THICKNESS + GPS_MAX_HEIGHT
-    for name, x in (('GPS upper clip left', gps_x - 1.6),
-                    ('GPS upper clip right', gps_x + GPS_LENGTH - 2.0)):
-        rectangle_feature(comp, name, x, gps_y + 3.0, lip_z,
-                          3.6, GPS_WIDTH - 6.0, 1.2,
+    # Paired corner stops prevent lengthwise movement while retaining a wide
+    # central path for the SMA barrel and the four-wire Dupont header.
+    stop_width = 4.0
+    stop_h = GPS_BOARD_THICKNESS + 0.5
+    for end_name, stop_y in (
+            ('front', gps_y - GPS_CLIP_THICKNESS),
+            ('rear', gps['rear_y'] + CLEARANCE)):
+        rectangle_feature(comp, f'GPS {end_name} stop left', gps_x, stop_y,
+                          LID_THICKNESS, stop_width, GPS_CLIP_THICKNESS, stop_h,
+                          adsk.fusion.FeatureOperations.JoinFeatureOperation)
+        rectangle_feature(comp, f'GPS {end_name} stop right',
+                          gps_x + GPS_BOARD_WIDTH - stop_width, stop_y,
+                          LID_THICKNESS, stop_width, GPS_CLIP_THICKNESS, stop_h,
+                          adsk.fusion.FeatureOperations.JoinFeatureOperation)
+
+    lip_z = LID_THICKNESS + GPS_BOARD_THICKNESS + 0.3
+    lip_width = GPS_CLIP_THICKNESS + CLEARANCE + GPS_CLIP_OVERHANG
+    for position, clip_y in (('front', gps_y + 4.0),
+                             ('rear', gps['rear_y'] - 4.0 - GPS_CLIP_LENGTH)):
+        rectangle_feature(comp, f'GPS {position} clip left', rail_x_left, clip_y,
+                          lip_z, lip_width, GPS_CLIP_LENGTH, 1.0,
+                          adsk.fusion.FeatureOperations.JoinFeatureOperation)
+        rectangle_feature(comp, f'GPS {position} clip right',
+                          gps_x + GPS_BOARD_WIDTH - GPS_CLIP_OVERHANG, clip_y,
+                          lip_z, lip_width, GPS_CLIP_LENGTH, 1.0,
                           adsk.fusion.FeatureOperations.JoinFeatureOperation)
 
     # Ventilation slots above the Pi.
@@ -214,7 +269,7 @@ def run(context):
         lid(root, 110.0)
         app.activeViewport.fit()
         ui.messageBox('Case generated. Body and lid are separate bodies for STL export. '
-                      'The SMA opening is aligned with the GPS cradle centreline.')
+                      'The GPS cradle faces the SMA connector toward its rear opening.')
     except Exception:
         if ui:
             ui.messageBox('Failed:\n{}'.format(traceback.format_exc()))

@@ -2,7 +2,7 @@
   "autodeskProduct": "Fusion360",
   "type": "script",
   "author": "Botty",
-  "description": "Parametric Raspberry Pi 4 Model B and NEO-M8N GPS carrier case",
+  "description": "Parametric Raspberry Pi 4 Model B and external-SMA GPS carrier case",
   "supportedOS": "windows|mac",
   "editEnabled": true
 }
