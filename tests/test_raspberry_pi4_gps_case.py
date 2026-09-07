@@ -35,13 +35,22 @@ class RaspberryPi4GpsCaseTest(unittest.TestCase):
         self.assertEqual(module.SMA_PROJECTION, 10.0)
         self.assertEqual(module.SMA_CENTER_FROM_RIGHT, 6.0)
         self.assertEqual(module.SMA_SLOT_WIDTH, 9.0)
+        self.assertEqual(module.GPS_RIGHT_RAIL_FROM_CAVITY, 44.0)
 
-    def test_cradle_centres_board_and_faces_offset_sma_toward_rear(self):
+    def test_cradle_positions_right_rail_and_faces_offset_sma_toward_rear(self):
         outer_l = module.CASE_INNER_LENGTH + 2 * module.WALL
         outer_w = module.CASE_INNER_WIDTH + 2 * module.WALL
         layout = module.gps_cradle_layout(outer_l, outer_w, 110.0)
 
-        self.assertEqual(layout['center_x'], 110.0 + outer_l / 2)
+        self.assertEqual(
+            layout['right_rail_x'] - (110.0 + module.WALL),
+            module.GPS_RIGHT_RAIL_FROM_CAVITY,
+        )
+        self.assertAlmostEqual(
+            layout['right_rail_x']
+            - (layout['x'] + module.GPS_BOARD_WIDTH),
+            module.CLEARANCE,
+        )
         self.assertEqual(
             layout['x'] + module.GPS_BOARD_WIDTH - layout['sma_center_x'],
             module.SMA_CENTER_FROM_RIGHT,
