@@ -11,13 +11,13 @@ carrier:
 - PCB envelope: 18 × 23 mm;
 - SMA connector pointing toward the rear/top edge of the lid;
 - SMA projection beyond the PCB edge: 10 mm;
-- SMA axis 6 mm from the left PCB edge in the model (or 6 mm from the right
-  edge when the physical module is mirrored), exposed through a 9 mm top-open
-  rear slot;
+- with the chip facing inward, SMA axis 6 mm from the right PCB corner,
+  exposed through a 9 mm top-open rear slot aligned to the retaining cradle;
 - four-pin Dupont header on the opposite short edge, with an unobstructed cable
   path toward the Raspberry Pi;
 - component side facing the inside of the case;
-- four short side clips grip the PCB edges without spanning the SMA or header.
+- four short side clips grip the PCB edges without spanning the SMA or header;
+- the rear-right corner stop is omitted so it cannot obstruct the offset SMA.
 
 The board envelope and SMA position are user measurements. PCB thickness and
 component height remain estimates; adjust `GPS_BOARD_THICKNESS`,

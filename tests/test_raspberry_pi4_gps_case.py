@@ -3,6 +3,7 @@ import sys
 import types
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 adsk = types.ModuleType('adsk')
@@ -32,7 +33,7 @@ class RaspberryPi4GpsCaseTest(unittest.TestCase):
         self.assertEqual(module.GPS_BOARD_WIDTH, 18.0)
         self.assertEqual(module.GPS_BOARD_LENGTH, 23.0)
         self.assertEqual(module.SMA_PROJECTION, 10.0)
-        self.assertEqual(module.SMA_CENTER_FROM_SIDE, 6.0)
+        self.assertEqual(module.SMA_CENTER_FROM_RIGHT, 6.0)
         self.assertEqual(module.SMA_SLOT_WIDTH, 9.0)
 
     def test_cradle_centres_board_and_faces_offset_sma_toward_rear(self):
@@ -42,8 +43,15 @@ class RaspberryPi4GpsCaseTest(unittest.TestCase):
 
         self.assertEqual(layout['center_x'], 110.0 + outer_l / 2)
         self.assertEqual(
-            layout['sma_center_x'] - layout['x'],
-            module.SMA_CENTER_FROM_SIDE,
+            layout['x'] + module.GPS_BOARD_WIDTH - layout['sma_center_x'],
+            module.SMA_CENTER_FROM_RIGHT,
+        )
+        right_clip_inner_x = (
+            layout['x'] + module.GPS_BOARD_WIDTH + module.CLEARANCE
+        )
+        self.assertAlmostEqual(
+            right_clip_inner_x - layout['sma_center_x'],
+            module.SMA_CENTER_FROM_RIGHT + module.CLEARANCE,
         )
         self.assertEqual(
             layout['rear_y'],
@@ -60,6 +68,21 @@ class RaspberryPi4GpsCaseTest(unittest.TestCase):
             layout['sma_tip_y'] - layout['rear_y'],
             module.SMA_PROJECTION,
         )
+
+    def test_rear_right_stop_does_not_obstruct_offset_sma(self):
+        features = []
+
+        def capture(comp, name, x, y, z, length, width, height,
+                    operation='new-body'):
+            features.append((name, x, y, z, length, width, height, operation))
+
+        with mock.patch.object(module, 'rectangle_feature', side_effect=capture):
+            module.lid(None, 110.0)
+
+        names = {feature[0] for feature in features}
+        self.assertIn('GPS rear stop left', names)
+        self.assertNotIn('GPS rear stop right', names)
+        self.assertTrue(all(min(feature[4:7]) > 0 for feature in features))
 
 
 if __name__ == '__main__':

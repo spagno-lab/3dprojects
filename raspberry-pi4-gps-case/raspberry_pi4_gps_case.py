@@ -3,16 +3,15 @@ import adsk.fusion
 import traceback
 
 
-# User-measured dimensions in millimetres. With the SMA pointing toward the
-# rear/top edge of the lid, its axis is measured from the board's left edge.
-# Flipping the module mirrors that 6 mm offset to the right without changing
-# the cradle envelope.
+# User-measured dimensions in millimetres. Viewed in its mounted orientation,
+# the 18 mm edge is horizontal, the chip faces inward, and the SMA points
+# outward from the rear/top edge. Its axis is 6 mm from the right PCB corner.
 GPS_BOARD_LENGTH = 23.0
 GPS_BOARD_WIDTH = 18.0
 GPS_BOARD_THICKNESS = 1.6
 GPS_MAX_COMPONENT_HEIGHT = 8.0
 SMA_PROJECTION = 10.0
-SMA_CENTER_FROM_SIDE = 6.0
+SMA_CENTER_FROM_RIGHT = 6.0
 SMA_SLOT_WIDTH = 9.0
 GPS_CLIP_THICKNESS = 1.6
 GPS_CLIP_LENGTH = 5.0
@@ -100,7 +99,7 @@ def gps_cradle_layout(outer_l, outer_w, x_offset=0):
         'y': board_rear_y - GPS_BOARD_LENGTH,
         'rear_y': board_rear_y,
         'center_x': board_x + GPS_BOARD_WIDTH / 2,
-        'sma_center_x': board_x + SMA_CENTER_FROM_SIDE,
+        'sma_center_x': board_x + GPS_BOARD_WIDTH - SMA_CENTER_FROM_RIGHT,
         'sma_tip_y': board_rear_y + SMA_PROJECTION,
     }
 
@@ -160,7 +159,7 @@ def body_shell(comp):
                       WALL + 2, 18.0, 8.0, adsk.fusion.FeatureOperations.CutFeatureOperation)
 
     # Top-open slot: the lid-mounted board drops in with its SMA connector
-    # already fitted. The connector is offset 6 mm from the board's left edge.
+    # already fitted. The connector is offset 6 mm from the board's right edge.
     gps = gps_cradle_layout(outer_l, outer_w)
     rectangle_feature(
         comp, 'GPS SMA opening', gps['sma_center_x'] - SMA_SLOT_WIDTH / 2,
@@ -219,20 +218,26 @@ def lid(comp, x_offset=0):
                       GPS_CLIP_THICKNESS, rail_length, rail_h,
                       adsk.fusion.FeatureOperations.JoinFeatureOperation)
 
-    # Paired corner stops prevent lengthwise movement while retaining a wide
-    # central path for the SMA barrel and the four-wire Dupont header.
+    # Corner stops prevent lengthwise movement while keeping the SMA and
+    # four-wire Dupont connector paths clear.
     stop_width = 4.0
     stop_h = GPS_BOARD_THICKNESS + 0.5
-    for end_name, stop_y in (
-            ('front', gps_y - GPS_CLIP_THICKNESS),
-            ('rear', gps['rear_y'] + CLEARANCE)):
-        rectangle_feature(comp, f'GPS {end_name} stop left', gps_x, stop_y,
-                          LID_THICKNESS, stop_width, GPS_CLIP_THICKNESS, stop_h,
-                          adsk.fusion.FeatureOperations.JoinFeatureOperation)
-        rectangle_feature(comp, f'GPS {end_name} stop right',
-                          gps_x + GPS_BOARD_WIDTH - stop_width, stop_y,
-                          LID_THICKNESS, stop_width, GPS_CLIP_THICKNESS, stop_h,
-                          adsk.fusion.FeatureOperations.JoinFeatureOperation)
+    front_stop_y = gps_y - GPS_CLIP_THICKNESS
+    rectangle_feature(comp, 'GPS front stop left', gps_x, front_stop_y,
+                      LID_THICKNESS, stop_width, GPS_CLIP_THICKNESS, stop_h,
+                      adsk.fusion.FeatureOperations.JoinFeatureOperation)
+    rectangle_feature(comp, 'GPS front stop right',
+                      gps_x + GPS_BOARD_WIDTH - stop_width, front_stop_y,
+                      LID_THICKNESS, stop_width, GPS_CLIP_THICKNESS, stop_h,
+                      adsk.fusion.FeatureOperations.JoinFeatureOperation)
+
+    # The SMA is close enough to the right corner that a right rear stop would
+    # cross its 9 mm opening. A single left rear stop locates the PCB while the
+    # full connector corridor remains unobstructed.
+    rectangle_feature(comp, 'GPS rear stop left', gps_x,
+                      gps['rear_y'] + CLEARANCE, LID_THICKNESS,
+                      stop_width, GPS_CLIP_THICKNESS, stop_h,
+                      adsk.fusion.FeatureOperations.JoinFeatureOperation)
 
     lip_z = LID_THICKNESS + GPS_BOARD_THICKNESS + 0.3
     lip_width = GPS_CLIP_THICKNESS + CLEARANCE + GPS_CLIP_OVERHANG
