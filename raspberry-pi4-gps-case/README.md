@@ -18,7 +18,10 @@ dimensions of the blue carrier:
 - SMA threaded section: 5 mm diameter and 8 mm projection from its base;
 - the shield/chip face points toward the lid while the component and pin face
   points toward the case interior;
-- the SMA passes through a circular 5.6 mm rear-wall hole aligned with its axis;
+- the lid is flipped 180 degrees around its front-rear axis for assembly, so
+  the SMA hole position is mirrored left-to-right on the case;
+- the SMA passes through a circular 5.6 mm rear-wall hole aligned with its
+  assembled axis;
 - a circular external counterbore reduces the general 2.4 mm wall to 2 mm
   around the SMA, leaving about
   1 mm clearance before an attached antenna that stops 3 mm from the base;

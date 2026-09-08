@@ -121,6 +121,11 @@ class RaspberryPi4GpsCaseTest(unittest.TestCase):
             module.LID_THICKNESS + module.GPS_BACK_COMPONENT_DEPTH
             + module.GPS_FIT_CLEARANCE + module.GPS_BOARD_THICKNESS / 2
         )
+        lid_layout = module.gps_cradle_layout(outer_l, outer_w)
+        self.assertAlmostEqual(
+            opening[1], outer_l - lid_layout['sma_center_x'])
+        self.assertAlmostEqual(
+            outer_l - opening[1], lid_layout['sma_center_x'])
         self.assertAlmostEqual(opening[2], outer_h - reference_axis_z)
 
     def test_rear_wall_hole_converts_model_coordinates_and_targets_case_body(self):
