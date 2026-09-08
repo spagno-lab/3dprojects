@@ -77,12 +77,17 @@ class RaspberryPi4GpsCaseTest(unittest.TestCase):
 
     def test_cradle_supports_edges_and_leaves_sma_and_pins_open(self):
         features = []
+        lid_body = object()
+        lid_feature = mock.Mock()
+        lid_feature.bodies.item.return_value = lid_body
 
         def capture(comp, name, x, y, z, length, width, height,
-                    operation='new-body'):
+                    operation='new-body', participant_bodies=None):
             features.append((name, x, y, z, length, width, height, operation))
+            return lid_feature if name == 'Lid' else mock.Mock()
 
-        with mock.patch.object(module, 'rectangle_feature', side_effect=capture):
+        with mock.patch.object(module, 'rectangle_feature', side_effect=capture), \
+                mock.patch.object(module, 'rectangle_mesh_feature') as mesh:
             module.lid(None, 110.0)
 
         names = {feature[0] for feature in features}
@@ -93,6 +98,70 @@ class RaspberryPi4GpsCaseTest(unittest.TestCase):
         self.assertNotIn('GPS rear stop left', names)
         self.assertNotIn('GPS rear stop right', names)
         self.assertTrue(all(min(feature[4:7]) > 0 for feature in features))
+        self.assertIs(mesh.call_args.args[1], lid_body)
+
+    def test_pi_board_datum_matches_official_mounting_pattern(self):
+        layout = module.pi_layout()
+
+        self.assertEqual(module.PI_BOARD_LENGTH, 85.0)
+        self.assertEqual(module.PI_BOARD_WIDTH, 56.0)
+        self.assertEqual(module.PI_MOUNT_X, 58.0)
+        self.assertEqual(module.PI_MOUNT_Y, 49.0)
+        self.assertEqual(module.PI_MOUNT_EDGE_OFFSET, 3.5)
+        self.assertEqual(module.PI_MOUNT_HOLE_DIAMETER, 3.0)
+        self.assertAlmostEqual(layout['x'], 4.9)
+        self.assertAlmostEqual(layout['y'], 4.9)
+        self.assertAlmostEqual(layout['mount_x'], 8.4)
+        self.assertAlmostEqual(layout['mount_y'], 8.4)
+        self.assertAlmostEqual(layout['bottom_z'], 6.4)
+        self.assertAlmostEqual(layout['top_z'], 8.0)
+
+    def test_pi_io_openings_are_derived_from_assembled_board_datum(self):
+        openings = {opening['name']: opening
+                    for opening in module.pi_io_openings()}
+
+        expected = {
+            'USB-C opening': ('front', 9.8, 13.8, 7.2, 6.1),
+            'Micro-HDMI 1 opening': ('front', 26.1, 10.1, 7.2, 6.1),
+            'Micro-HDMI 2 opening': ('front', 39.9, 10.1, 7.2, 6.1),
+            'Audio opening': ('front', 53.7, 10.1, 7.2, 8.5),
+            'USB 2 opening': ('right', 5.8, 16.3, 7.2, 17.2),
+            'USB 3 opening': ('right', 22.8, 16.3, 7.2, 17.2),
+            'Ethernet opening': ('right', 40.05, 19.5, 7.2, 15.2),
+        }
+        for name, (wall, start, span, z, height) in expected.items():
+            opening = openings[name]
+            self.assertEqual(opening['wall'], wall)
+            self.assertAlmostEqual(opening['start'], start)
+            self.assertAlmostEqual(opening['span'], span)
+            self.assertAlmostEqual(opening['z'], z)
+            self.assertAlmostEqual(opening['height'], height)
+
+        microsd = openings['MicroSD opening']
+        self.assertEqual(microsd['wall'], 'left')
+        self.assertAlmostEqual(microsd['start'], 23.945)
+        self.assertEqual(microsd['span'], 18.0)
+        self.assertAlmostEqual(microsd['z'], 4.0)
+        self.assertEqual(microsd['height'], 8.0)
+
+    def test_lid_mesh_has_two_millimetre_ribs_and_avoids_gps_cradle(self):
+        outer_l = module.CASE_INNER_LENGTH + 2 * module.WALL
+        outer_w = module.CASE_INNER_WIDTH + 2 * module.WALL
+        cells, gps_keepout = module.lid_mesh_layout(outer_l, outer_w, 110.0)
+
+        self.assertGreater(len(cells), 40)
+        self.assertEqual(module.LID_MESH_PITCH - module.LID_MESH_OPENING, 2.0)
+        self.assertTrue(all(
+            110.0 + module.LID_MESH_EDGE_MARGIN <= cell[0]
+            and cell[0] + cell[2] <= 110.0 + outer_l - module.LID_MESH_EDGE_MARGIN
+            and module.LID_MESH_EDGE_MARGIN <= cell[1]
+            and cell[1] + cell[3] <= outer_w - module.LID_MESH_EDGE_MARGIN
+            for cell in cells
+        ))
+        self.assertTrue(all(
+            not module.rectangles_overlap(cell, gps_keepout)
+            for cell in cells
+        ))
 
     def test_body_has_round_sma_hole_at_axis_and_two_millimetre_local_wall(self):
         holes = []
