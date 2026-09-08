@@ -4,41 +4,40 @@ Parametric case for a Raspberry Pi 4 Model B and a clip-in u-blox GPS carrier.
 The script generates three separate bodies: case, lid, and a GPS reference
 object used to check the cradle and SMA opening visually in Fusion 360.
 
-## Revision after the first physical print
+## Raspberry Pi 4 fit and I/O
 
-The first printed revision had four defects. All four are addressed here, and
-the fixes are cross-checked against a measured screwless reference case
-(`raspberry-pi-4-case-remix.stl`, Printables model 296102) whose geometry was
-extracted from the mesh rather than guessed:
+The Pi geometry uses a single assembled-board datum instead of independent
+wall-opening coordinates. The board and mounting pattern follow Raspberry
+Pi's official mechanical drawing:
 
-1. **The M2.5 screw posts are gone.** The board now drops onto four 3 mm
-   standoffs whose 2.4 mm pegs enter the mounting holes, and four 2.2 mm
-   cantilever clips snap 1 mm over the PCB edge. Clip thickness, length, and
-   interference follow the reference case.
-2. **The lid now latches.** The old rim cleared the cavity wall by 0.6 mm per
-   side and had no catch at all, so it could never click. The rim is now
-   continuous with 0.15 mm clearance and carries four bumps that drop into
-   pockets cut 4 mm below the case rim.
-3. **The SMA hole is 2 mm wider** (5.6 mm to 7.6 mm). The external counterbore
-   grew to 9.6 mm so it still thins the wall around the antenna nut.
-4. **The Pi sits against its openings.** The cavity was 91 x 62 mm for an
-   85 x 56 mm board, leaving the connectors about 3 mm inboard of the walls.
-   It is now the PCB plus 1 mm per side, and every port cut-out is generated
-   from the PCB datum using the official Raspberry Pi 4 connector centres.
+- board: 85 × 56 × 1.6 mm;
+- mounting-hole pattern: 58 × 49 mm;
+- mounting-hole centres: 3.5 mm from the board edges;
+- printed mounting holes: 3.0 mm diameter, enlarged from the nominal 2.7 mm
+  PCB holes to allow for FDM printing and an M2.5 fastener.
 
-The resulting outer footprint is 92 x 63 mm, identical to the reference case.
+USB-C, the two Micro-HDMI ports, audio, both USB stacks, Ethernet, and MicroSD
+openings are derived from that same datum. Connector envelopes were
+cross-checked against the detailed public
+[`pkoehlers/rpi-case-openscad`](https://github.com/pkoehlers/rpi-case-openscad)
+model and a second enclosure,
+[`txoof/pi4_case`](https://github.com/txoof/pi4_case), then expanded by
+0.8 mm on each mating edge for printing and plug access. The second project
+also confirms that broader grouped port openings are a viable alternative,
+but this design retains separate openings for better wall protection.
 
-## Reference geometry taken from the mesh
+Primary references:
 
-Measured directly from the donor STL, since mesh files carry no parameters:
+- [Raspberry Pi 4 Model B mechanical drawing](https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-mechanical-drawing.pdf)
+- [Raspberry Pi 4 Model B specifications](https://www.raspberrypi.com/products/raspberry-pi-4-model-b/specifications/)
 
-- wall thickness 2.5 mm, outer footprint 92 x 63 mm;
-- Pi standoffs on a 58.3 x 49.2 mm pattern, 5 mm diameter;
-- lid clips 2.2 mm thick, 12 mm long, latching over roughly 1 mm.
+## Ventilated lid
 
-Print orientation matters for the clips: they must be printed so the layer
-lines are not perpendicular to the bending direction, otherwise they shear off
-on first assembly.
+The lid uses a broad 7 × 7 mm square mesh with 2 mm ribs. A 6 mm solid border
+preserves stiffness and leaves the locating rim intact. Mesh cells that would
+intersect the GPS cradle and its clips are automatically omitted, leaving a
+solid load-bearing region around the removable module while opening most of
+the area above the Raspberry Pi for passive airflow.
 
 ## GPS carrier reference
 
