@@ -42,6 +42,46 @@ CASE_INNER_WIDTH = 62.0
 CASE_INNER_HEIGHT = 29.0
 LID_THICKNESS = 2.4
 
+# Raspberry Pi 4 Model B mechanical datum. Board and mounting dimensions come
+# from the official mechanical drawing. Connector envelopes are cross-checked
+# against public Pi 4 enclosure models and receive one explicit print margin.
+PI_BOARD_LENGTH = 85.0
+PI_BOARD_WIDTH = 56.0
+PI_BOARD_THICKNESS = 1.6
+PI_BOARD_EDGE_CLEARANCE = 2.5
+PI_MOUNT_X = 58.0
+PI_MOUNT_Y = 49.0
+PI_MOUNT_EDGE_OFFSET = 3.5
+PI_MOUNT_HOLE_DIAMETER = 3.0
+PI_POST_DIAMETER = 6.0
+PI_POST_HEIGHT = 4.0
+PI_IO_CLEARANCE = 0.8
+
+# Connector envelopes in the public reference model's board coordinates.
+# The Pi is assembled 180 degrees from that model in this case.
+PI_FRONT_CONNECTORS = (
+    ('USB-C opening', 67.1, 12.2, 4.5),
+    ('Micro-HDMI 1 opening', 54.5, 8.5, 4.5),
+    ('Micro-HDMI 2 opening', 40.7, 8.5, 4.5),
+    ('Audio opening', 26.9, 8.5, 6.9),
+)
+PI_RIGHT_CONNECTORS = (
+    ('USB 2 opening', 39.6, 14.7, 15.6),
+    ('USB 3 opening', 22.6, 14.7, 15.6),
+    ('Ethernet opening', 2.15, 17.9, 13.6),
+)
+PI_MICROSD_Y = 22.4
+PI_MICROSD_WIDTH = 11.11
+PI_MICROSD_ACCESS_WIDTH = 18.0
+PI_MICROSD_OPENING_HEIGHT = 8.0
+
+# A square lattice gives the lid broad passive ventilation while keeping
+# printable 2 mm ribs and a solid load path around the locating rim and GPS.
+LID_MESH_EDGE_MARGIN = 6.0
+LID_MESH_OPENING = 7.0
+LID_MESH_PITCH = 9.0
+LID_MESH_GPS_MARGIN = 2.0
+
 
 def cm(mm):
     return mm / 10.0
@@ -86,6 +126,122 @@ def rectangle_feature(comp, name, x, y, z, length, width, height,
     feature = extrudes.add(extrude_input)
     feature.name = name
     return feature
+
+
+def rectangle_mesh_feature(comp, target_body, name, rectangles, height):
+    """Cut many rectangular mesh cells in one sketch/extrude operation."""
+    sketch = comp.sketches.add(comp.xYConstructionPlane)
+    sketch.name = name
+    lines = sketch.sketchCurves.sketchLines
+    for x, y, length, width in rectangles:
+        lines.addTwoPointRectangle(
+            adsk.core.Point3D.create(cm(x), cm(y), 0),
+            adsk.core.Point3D.create(cm(x + length), cm(y + width), 0),
+        )
+
+    profiles = adsk.core.ObjectCollection.create()
+    for index in range(sketch.profiles.count):
+        profiles.add(sketch.profiles.item(index))
+    extrudes = comp.features.extrudeFeatures
+    extrude_input = extrudes.createInput(
+        profiles, adsk.fusion.FeatureOperations.CutFeatureOperation)
+    extrude_input.participantBodies = [target_body]
+    extrude_input.setDistanceExtent(False, value(height))
+    feature = extrudes.add(extrude_input)
+    feature.name = name
+    return feature
+
+
+def pi_layout():
+    """Return the Pi board datum and mounting locations inside the case."""
+    board_x = WALL + PI_BOARD_EDGE_CLEARANCE
+    board_y = WALL + PI_BOARD_EDGE_CLEARANCE
+    board_bottom_z = FLOOR + PI_POST_HEIGHT
+    return {
+        'x': board_x,
+        'y': board_y,
+        'bottom_z': board_bottom_z,
+        'top_z': board_bottom_z + PI_BOARD_THICKNESS,
+        'mount_x': board_x + PI_MOUNT_EDGE_OFFSET,
+        'mount_y': board_y + PI_MOUNT_EDGE_OFFSET,
+    }
+
+
+def pi_io_openings():
+    """Derive all Pi 4 wall apertures from the common assembled board datum."""
+    pi = pi_layout()
+    opening_z = pi['top_z'] - PI_IO_CLEARANCE
+    openings = []
+
+    for name, source_x, connector_width, connector_height in PI_FRONT_CONNECTORS:
+        rotated_x = pi['x'] + PI_BOARD_LENGTH - source_x - connector_width
+        openings.append({
+            'name': name,
+            'wall': 'front',
+            'start': rotated_x - PI_IO_CLEARANCE,
+            'span': connector_width + 2 * PI_IO_CLEARANCE,
+            'z': opening_z,
+            'height': connector_height + 2 * PI_IO_CLEARANCE,
+        })
+
+    for name, source_y, connector_width, connector_height in PI_RIGHT_CONNECTORS:
+        rotated_y = pi['y'] + PI_BOARD_WIDTH - source_y - connector_width
+        openings.append({
+            'name': name,
+            'wall': 'right',
+            'start': rotated_y - PI_IO_CLEARANCE,
+            'span': connector_width + 2 * PI_IO_CLEARANCE,
+            'z': opening_z,
+            'height': connector_height + 2 * PI_IO_CLEARANCE,
+        })
+
+    microsd_center_y = (
+        pi['y'] + PI_BOARD_WIDTH
+        - PI_MICROSD_Y - PI_MICROSD_WIDTH / 2
+    )
+    openings.append({
+        'name': 'MicroSD opening',
+        'wall': 'left',
+        'start': microsd_center_y - PI_MICROSD_ACCESS_WIDTH / 2,
+        'span': PI_MICROSD_ACCESS_WIDTH,
+        'z': pi['bottom_z'] - FLOOR,
+        'height': PI_MICROSD_OPENING_HEIGHT,
+    })
+    return openings
+
+
+def rectangles_overlap(first, second):
+    """Return whether two (x, y, length, width) rectangles overlap."""
+    ax, ay, al, aw = first
+    bx, by, bl, bw = second
+    return not (
+        ax + al <= bx or bx + bl <= ax
+        or ay + aw <= by or by + bw <= ay
+    )
+
+
+def lid_mesh_layout(outer_l, outer_w, x_offset=0):
+    """Return printable square mesh cells, excluding the GPS cradle zone."""
+    gps = gps_cradle_layout(outer_l, outer_w, x_offset)
+    gps_keepout = (
+        gps['x'] - GPS_FIT_CLEARANCE - GPS_CLIP_THICKNESS
+        - LID_MESH_GPS_MARGIN,
+        gps['y'] - GPS_CLIP_THICKNESS - LID_MESH_GPS_MARGIN,
+        GPS_BOARD_WIDTH + 2 * (
+            GPS_FIT_CLEARANCE + GPS_CLIP_THICKNESS + LID_MESH_GPS_MARGIN),
+        GPS_BOARD_LENGTH + GPS_CLIP_THICKNESS + 2 * LID_MESH_GPS_MARGIN,
+    )
+    cells = []
+    y = LID_MESH_EDGE_MARGIN
+    while y + LID_MESH_OPENING <= outer_w - LID_MESH_EDGE_MARGIN:
+        x = x_offset + LID_MESH_EDGE_MARGIN
+        while x + LID_MESH_OPENING <= x_offset + outer_l - LID_MESH_EDGE_MARGIN:
+            cell = (x, y, LID_MESH_OPENING, LID_MESH_OPENING)
+            if not rectangles_overlap(cell, gps_keepout):
+                cells.append(cell)
+            x += LID_MESH_PITCH
+        y += LID_MESH_PITCH
+    return cells, gps_keepout
 
 
 def rear_wall_hole(comp, target_body, name, center_x, center_z, wall_y,
@@ -167,47 +323,59 @@ def body_shell(comp):
         adsk.fusion.FeatureOperations.CutFeatureOperation
     )
 
-    # Pi 4 mounting posts: standard 58 x 49 mm hole pattern, M2.5 clearance.
-    pi_x = WALL + 3.5 + 2.5
-    pi_y = WALL + 3.5 + 2.5
-    for index, (x, y) in enumerate(((pi_x, pi_y), (pi_x + 58, pi_y),
-                                    (pi_x, pi_y + 49), (pi_x + 58, pi_y + 49)), 1):
+    # Pi 4 mounting posts: official 58 x 49 mm pattern, with print clearance.
+    pi = pi_layout()
+    pi_x = pi['mount_x']
+    pi_y = pi['mount_y']
+    for index, (x, y) in enumerate(((pi_x, pi_y), (pi_x + PI_MOUNT_X, pi_y),
+                                    (pi_x, pi_y + PI_MOUNT_Y),
+                                    (pi_x + PI_MOUNT_X, pi_y + PI_MOUNT_Y)), 1):
         sketch = comp.sketches.add(offset_plane(comp, FLOOR))
         sketch.name = f'Pi post {index}'
         circles = sketch.sketchCurves.sketchCircles
-        circles.addByCenterRadius(adsk.core.Point3D.create(cm(x), cm(y), 0), cm(3.0))
+        circles.addByCenterRadius(
+            adsk.core.Point3D.create(cm(x), cm(y), 0),
+            cm(PI_POST_DIAMETER / 2),
+        )
         post = comp.features.extrudeFeatures.createInput(
             sketch.profiles.item(0), adsk.fusion.FeatureOperations.JoinFeatureOperation)
-        post.setDistanceExtent(False, value(4.0))
+        post.setDistanceExtent(False, value(PI_POST_HEIGHT))
         comp.features.extrudeFeatures.add(post)
 
         hole_sketch = comp.sketches.add(offset_plane(comp, FLOOR))
         hole_sketch.sketchCurves.sketchCircles.addByCenterRadius(
-            adsk.core.Point3D.create(cm(x), cm(y), 0), cm(1.35))
+            adsk.core.Point3D.create(cm(x), cm(y), 0),
+            cm(PI_MOUNT_HOLE_DIAMETER / 2),
+        )
         hole = comp.features.extrudeFeatures.createInput(
             hole_sketch.profiles.item(0), adsk.fusion.FeatureOperations.CutFeatureOperation)
-        hole.setDistanceExtent(False, value(5.0))
+        hole.setDistanceExtent(False, value(PI_POST_HEIGHT + 1.0))
         comp.features.extrudeFeatures.add(hole)
 
-    # Separate top-open Pi 4 port cut-outs. Their upper edge is closed by the lid.
-    top = outer_h - 17.0
-    rectangle_feature(comp, 'Ethernet opening', outer_l - WALL - 1, 6.0, top,
-                      WALL + 2, 17.5, 18.0, adsk.fusion.FeatureOperations.CutFeatureOperation)
-    rectangle_feature(comp, 'USB pair 1 opening', outer_l - WALL - 1, 25.0, top,
-                      WALL + 2, 15.5, 18.0, adsk.fusion.FeatureOperations.CutFeatureOperation)
-    rectangle_feature(comp, 'USB pair 2 opening', outer_l - WALL - 1, 42.0, top,
-                      WALL + 2, 15.5, 18.0, adsk.fusion.FeatureOperations.CutFeatureOperation)
-
-    rectangle_feature(comp, 'USB-C opening', 8.0, -1.0, top + 4.0,
-                      11.0, WALL + 2, 14.0, adsk.fusion.FeatureOperations.CutFeatureOperation)
-    rectangle_feature(comp, 'Micro-HDMI 1 opening', 24.0, -1.0, top + 5.0,
-                      9.0, WALL + 2, 13.0, adsk.fusion.FeatureOperations.CutFeatureOperation)
-    rectangle_feature(comp, 'Micro-HDMI 2 opening', 37.0, -1.0, top + 5.0,
-                      9.0, WALL + 2, 13.0, adsk.fusion.FeatureOperations.CutFeatureOperation)
-    rectangle_feature(comp, 'Audio opening', 54.0, -1.0, top + 4.0,
-                      10.0, WALL + 2, 14.0, adsk.fusion.FeatureOperations.CutFeatureOperation)
-    rectangle_feature(comp, 'MicroSD opening', -1.0, 23.0, 4.0,
-                      WALL + 2, 18.0, 8.0, adsk.fusion.FeatureOperations.CutFeatureOperation)
+    # Derive every wall opening from the same assembled Pi board datum.
+    for opening in pi_io_openings():
+        if opening['wall'] == 'front':
+            rectangle_feature(
+                comp, opening['name'], opening['start'], -1.0, opening['z'],
+                opening['span'], WALL + 2.0, opening['height'],
+                adsk.fusion.FeatureOperations.CutFeatureOperation,
+                [case_body],
+            )
+        elif opening['wall'] == 'right':
+            rectangle_feature(
+                comp, opening['name'], outer_l - WALL - 1.0,
+                opening['start'], opening['z'], WALL + 2.0,
+                opening['span'], opening['height'],
+                adsk.fusion.FeatureOperations.CutFeatureOperation,
+                [case_body],
+            )
+        else:
+            rectangle_feature(
+                comp, opening['name'], -1.0, opening['start'], opening['z'],
+                WALL + 2.0, opening['span'], opening['height'],
+                adsk.fusion.FeatureOperations.CutFeatureOperation,
+                [case_body],
+            )
 
     # Round rear-wall hole aligned with the assembled SMA axis. A shallow
     # circular counterbore leaves 2 mm of local wall so an antenna that stops
@@ -218,7 +386,9 @@ def body_shell(comp):
 def lid(comp, x_offset=0):
     outer_l = CASE_INNER_LENGTH + 2 * WALL
     outer_w = CASE_INNER_WIDTH + 2 * WALL
-    rectangle_feature(comp, 'Lid', x_offset, 0, 0, outer_l, outer_w, LID_THICKNESS)
+    lid_feature = rectangle_feature(
+        comp, 'Lid', x_offset, 0, 0, outer_l, outer_w, LID_THICKNESS)
+    lid_body = lid_feature.bodies.item(0)
 
     # Inner locating rim, discontinuous so it can flex when snapped into place.
     rim_h = 3.0
@@ -300,16 +470,13 @@ def lid(comp, x_offset=0):
                           lip_z, lip_width, GPS_CLIP_LENGTH, 1.0,
                           adsk.fusion.FeatureOperations.JoinFeatureOperation)
 
-    # Ventilation slots above the Pi.
-    slot_count = 6
-    slot_width = 6.0
-    slot_pitch = 11.0
-    slots_width = slot_width + (slot_count - 1) * slot_pitch
-    slots_x = x_offset + (outer_l - slots_width) / 2
-    for i in range(slot_count):
-        rectangle_feature(comp, f'Vent slot {i + 1}', slots_x + i * slot_pitch, 12, 0,
-                          slot_width, 2.2, LID_THICKNESS + 1,
-                          adsk.fusion.FeatureOperations.CutFeatureOperation)
+    # Broad square mesh above the Pi. One combined cut is considerably faster
+    # in Fusion than creating a separate extrude feature for every mesh cell.
+    mesh_cells, _ = lid_mesh_layout(outer_l, outer_w, x_offset)
+    rectangle_mesh_feature(
+        comp, lid_body, 'Lid ventilation mesh', mesh_cells,
+        LID_THICKNESS + 1.0,
+    )
 
 
 def gps_reference(comp, x_offset=0):

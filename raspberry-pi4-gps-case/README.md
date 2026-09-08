@@ -4,6 +4,41 @@ Parametric case for a Raspberry Pi 4 Model B and a clip-in u-blox GPS carrier.
 The script generates three separate bodies: case, lid, and a GPS reference
 object used to check the cradle and SMA opening visually in Fusion 360.
 
+## Raspberry Pi 4 fit and I/O
+
+The Pi geometry uses a single assembled-board datum instead of independent
+wall-opening coordinates. The board and mounting pattern follow Raspberry
+Pi's official mechanical drawing:
+
+- board: 85 × 56 × 1.6 mm;
+- mounting-hole pattern: 58 × 49 mm;
+- mounting-hole centres: 3.5 mm from the board edges;
+- printed mounting holes: 3.0 mm diameter, enlarged from the nominal 2.7 mm
+  PCB holes to allow for FDM printing and an M2.5 fastener.
+
+USB-C, the two Micro-HDMI ports, audio, both USB stacks, Ethernet, and MicroSD
+openings are derived from that same datum. Connector envelopes were
+cross-checked against the detailed public
+[`pkoehlers/rpi-case-openscad`](https://github.com/pkoehlers/rpi-case-openscad)
+model and a second enclosure,
+[`txoof/pi4_case`](https://github.com/txoof/pi4_case), then expanded by
+0.8 mm on each mating edge for printing and plug access. The second project
+also confirms that broader grouped port openings are a viable alternative,
+but this design retains separate openings for better wall protection.
+
+Primary references:
+
+- [Raspberry Pi 4 Model B mechanical drawing](https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-mechanical-drawing.pdf)
+- [Raspberry Pi 4 Model B specifications](https://www.raspberrypi.com/products/raspberry-pi-4-model-b/specifications/)
+
+## Ventilated lid
+
+The lid uses a broad 7 × 7 mm square mesh with 2 mm ribs. A 6 mm solid border
+preserves stiffness and leaves the locating rim intact. Mesh cells that would
+intersect the GPS cradle and its clips are automatically omitted, leaving a
+solid load-bearing region around the removable module while opening most of
+the area above the Raspberry Pi for passive airflow.
+
 ## GPS carrier reference
 
 The cradle follows the supplied front, rear, and side photos and the measured
