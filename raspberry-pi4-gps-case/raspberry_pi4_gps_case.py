@@ -88,7 +88,8 @@ def rectangle_feature(comp, name, x, y, z, length, width, height,
     return feature
 
 
-def rear_wall_hole(comp, name, center_x, center_z, wall_y, diameter, depth):
+def rear_wall_hole(comp, target_body, name, center_x, center_z, wall_y,
+                   diameter, depth):
     planes = comp.constructionPlanes
     plane_input = planes.createInput()
     # Fusion's positive offset from the XZ plane points toward negative Y.
@@ -96,12 +97,16 @@ def rear_wall_hole(comp, name, center_x, center_z, wall_y, diameter, depth):
     plane = planes.add(plane_input)
     sketch = comp.sketches.add(plane)
     sketch.name = name
+    model_center = adsk.core.Point3D.create(
+        cm(center_x), cm(wall_y), cm(center_z))
+    sketch_center = sketch.modelToSketchSpace(model_center)
     sketch.sketchCurves.sketchCircles.addByCenterRadius(
-        adsk.core.Point3D.create(cm(center_x), cm(center_z), 0), cm(diameter / 2)
+        sketch_center, cm(diameter / 2)
     )
     extrudes = comp.features.extrudeFeatures
     extrude_input = extrudes.createInput(
         sketch.profiles.item(0), adsk.fusion.FeatureOperations.CutFeatureOperation)
+    extrude_input.participantBodies = [target_body]
     extrude_input.setSymmetricExtent(value(depth), False)
     feature = extrudes.add(extrude_input)
     feature.name = name
@@ -122,7 +127,7 @@ def gps_cradle_layout(outer_l, outer_w, x_offset=0):
     }
 
 
-def gps_sma_wall_features(comp, outer_l, outer_w, outer_h):
+def gps_sma_wall_features(comp, target_body, outer_l, outer_w, outer_h):
     """Cut the round SMA hole and its shallow external tightening recess."""
     gps = gps_cradle_layout(outer_l, outer_w)
     # In the assembled position the lid underside is at the case top and the
@@ -134,12 +139,13 @@ def gps_sma_wall_features(comp, outer_l, outer_w, outer_h):
     )
     sma_center_z = outer_h - reference_axis_z
     rear_wall_hole(
-        comp, 'GPS SMA hole', gps['sma_center_x'], sma_center_z,
+        comp, target_body, 'GPS SMA hole', gps['sma_center_x'], sma_center_z,
         outer_w - WALL / 2, SMA_HOLE_DIAMETER, WALL + 2.0,
     )
     recess_depth = WALL - SMA_LOCAL_WALL
     rear_wall_hole(
-        comp, 'GPS SMA outside recess', gps['sma_center_x'], sma_center_z,
+        comp, target_body, 'GPS SMA outside recess',
+        gps['sma_center_x'], sma_center_z,
         outer_w - recess_depth / 2, SMA_RECESS_DIAMETER,
         recess_depth + 0.2,
     )
@@ -150,7 +156,9 @@ def body_shell(comp):
     outer_w = CASE_INNER_WIDTH + 2 * WALL
     outer_h = CASE_INNER_HEIGHT + FLOOR
 
-    rectangle_feature(comp, 'Case outer body', 0, 0, 0, outer_l, outer_w, outer_h)
+    outer_feature = rectangle_feature(
+        comp, 'Case outer body', 0, 0, 0, outer_l, outer_w, outer_h)
+    case_body = outer_feature.bodies.item(0)
     rectangle_feature(
         comp, 'Case cavity', WALL, WALL, FLOOR,
         CASE_INNER_LENGTH, CASE_INNER_WIDTH, CASE_INNER_HEIGHT + 1,
@@ -202,7 +210,7 @@ def body_shell(comp):
     # Round rear-wall hole aligned with the assembled SMA axis. A shallow
     # circular counterbore leaves 2 mm of local wall so an antenna that stops
     # 3 mm from the SMA base can still tighten completely.
-    gps_sma_wall_features(comp, outer_l, outer_w, outer_h)
+    gps_sma_wall_features(comp, case_body, outer_l, outer_w, outer_h)
 
 
 def lid(comp, x_offset=0):

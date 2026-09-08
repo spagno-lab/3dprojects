@@ -96,15 +96,19 @@ class RaspberryPi4GpsCaseTest(unittest.TestCase):
 
     def test_body_has_round_sma_hole_at_axis_and_two_millimetre_local_wall(self):
         holes = []
+        case_body = object()
 
-        def capture(comp, name, center_x, center_z, wall_y, diameter, depth):
+        def capture(comp, target_body, name, center_x, center_z, wall_y,
+                    diameter, depth):
+            self.assertIs(target_body, case_body)
             holes.append((name, center_x, center_z, wall_y, diameter, depth))
 
         with mock.patch.object(module, 'rear_wall_hole', side_effect=capture):
             outer_l = module.CASE_INNER_LENGTH + 2 * module.WALL
             outer_w = module.CASE_INNER_WIDTH + 2 * module.WALL
             outer_h = module.CASE_INNER_HEIGHT + module.FLOOR
-            module.gps_sma_wall_features(None, outer_l, outer_w, outer_h)
+            module.gps_sma_wall_features(
+                None, case_body, outer_l, outer_w, outer_h)
 
         by_name = {hole[0]: hole for hole in holes}
         opening = by_name['GPS SMA hole']
@@ -118,6 +122,41 @@ class RaspberryPi4GpsCaseTest(unittest.TestCase):
             + module.GPS_FIT_CLEARANCE + module.GPS_BOARD_THICKNESS / 2
         )
         self.assertAlmostEqual(opening[2], outer_h - reference_axis_z)
+
+    def test_rear_wall_hole_converts_model_coordinates_and_targets_case_body(self):
+        comp = mock.Mock()
+        plane_input = mock.Mock()
+        plane = object()
+        sketch = mock.Mock()
+        model_center = object()
+        sketch_center = object()
+        target_body = object()
+        extrude_input = mock.Mock()
+        feature = mock.Mock()
+
+        comp.constructionPlanes.createInput.return_value = plane_input
+        comp.constructionPlanes.add.return_value = plane
+        comp.sketches.add.return_value = sketch
+        sketch.modelToSketchSpace.return_value = sketch_center
+        comp.features.extrudeFeatures.createInput.return_value = extrude_input
+        comp.features.extrudeFeatures.add.return_value = feature
+
+        point3d = types.SimpleNamespace(create=mock.Mock(return_value=model_center))
+        with mock.patch.object(module.adsk.core, 'Point3D', point3d, create=True), \
+                mock.patch.object(module, 'value', side_effect=lambda mm: mm):
+            result = module.rear_wall_hole(
+                comp, target_body, 'GPS SMA hole',
+                53.4, 24.7, 65.6, 5.6, 4.4,
+            )
+
+        point3d.create.assert_called_once_with(
+            module.cm(53.4), module.cm(65.6), module.cm(24.7))
+        sketch.modelToSketchSpace.assert_called_once_with(model_center)
+        sketch.sketchCurves.sketchCircles.addByCenterRadius.assert_called_once_with(
+            sketch_center, module.cm(2.8))
+        self.assertEqual(extrude_input.participantBodies, [target_body])
+        extrude_input.setSymmetricExtent.assert_called_once_with(4.4, False)
+        self.assertIs(result, feature)
 
     def test_gps_reference_models_measured_module_parts(self):
         features = []
