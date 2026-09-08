@@ -11,15 +11,16 @@ dimensions of the blue carrier:
 
 - PCB envelope: 18 × 23 mm;
 - complete component envelope across both PCB faces: 8 mm;
-- five straight pins extending 8 mm from the edge toward the case interior;
+- five right-angle pins: 5 mm forward from the PCB face, then an 8 mm drop;
 - SMA connector pointing toward the rear/top edge of the lid;
 - SMA base: 7 × 7 × 1 mm, beginning at the top-right PCB corner when viewed
   from the component/pin side;
 - SMA threaded section: 5 mm diameter and 8 mm projection from its base;
 - the shield/chip face points toward the lid while the component and pin face
   points toward the case interior;
-- the SMA passes through a 5.6 mm top-open rear slot;
-- the general 2.4 mm wall is recessed to 2 mm around the SMA, leaving about
+- the SMA passes through a circular 5.6 mm rear-wall hole aligned with its axis;
+- a circular external counterbore reduces the general 2.4 mm wall to 2 mm
+  around the SMA, leaving about
   1 mm clearance before an attached antenna that stops 3 mm from the base;
 - four short side clips grip the PCB edges without spanning the SMA or header;
 - two 0.8 mm edge ledges lift the board clear of the lid-side shield;
@@ -34,7 +35,9 @@ between the two PCB faces are modelling assumptions because only the complete
 measurements become available. A cradle-only test print is recommended before
 printing the full case.
 
-The GPS reference object includes the PCB, an inset 8 mm component keep-out,
-the 7 mm SMA base, the 5 × 8 mm threaded-section envelope, and five individual
-8 mm pin envelopes. The clips retain only the PCB edges and do not press on the
-component keep-out.
+Body 3 is named `GPS module - removable fit reference` and remains a single
+body, with every join explicitly limited to that body so Fusion cannot merge it
+with the lid. It includes the PCB, an inset 8 mm component keep-out, the 7 mm
+SMA base, the 5 × 8 mm threaded-section envelope, and the two legs of each bent
+pin. It can be hidden or removed to inspect the cradle. The clips retain only
+the PCB edges and do not press on the component keep-out.
