@@ -3,20 +3,35 @@ import adsk.fusion
 import traceback
 
 
-# User-measured dimensions in millimetres. Viewed in its mounted orientation,
-# the 18 mm edge is horizontal, the chip faces inward, and the SMA points
-# outward from the rear/top edge. Its axis is 6 mm from the right PCB corner.
+# User-measured dimensions in millimetres. Viewed from inside the case, the
+# component/pin face points inward, the u-blox shield faces the lid, and the
+# SMA occupies the top-right corner and points through the rear wall.
 GPS_BOARD_LENGTH = 23.0
 GPS_BOARD_WIDTH = 18.0
 GPS_BOARD_THICKNESS = 1.6
-GPS_MAX_COMPONENT_HEIGHT = 8.0
-SMA_PROJECTION = 10.0
-SMA_CENTER_FROM_RIGHT = 6.0
-SMA_SLOT_WIDTH = 10.0
+GPS_MODULE_DEPTH = 8.0
+GPS_BACK_COMPONENT_DEPTH = (GPS_MODULE_DEPTH - GPS_BOARD_THICKNESS) / 2
+GPS_FRONT_COMPONENT_DEPTH = GPS_BACK_COMPONENT_DEPTH
+GPS_FIT_CLEARANCE = 0.3
+GPS_PIN_COUNT = 5
+GPS_PIN_LENGTH = 8.0
+GPS_PIN_PITCH = 2.54
+GPS_PIN_WIDTH = 0.64
+SMA_BASE_LENGTH = 7.0
+SMA_BASE_WIDTH = 7.0
+SMA_BASE_DEPTH = 1.0
+SMA_THREAD_DIAMETER = 5.0
+SMA_PROJECTION = 8.0
+SMA_CENTER_FROM_RIGHT = SMA_BASE_WIDTH / 2
+SMA_SLOT_WIDTH = SMA_THREAD_DIAMETER + 2 * GPS_FIT_CLEARANCE
+SMA_SLOT_HEIGHT = GPS_MODULE_DEPTH + 2 * GPS_FIT_CLEARANCE
+SMA_LOCAL_WALL = 2.0
+SMA_RECESS_WIDTH = SMA_BASE_WIDTH + 2 * GPS_FIT_CLEARANCE
 GPS_CLIP_THICKNESS = 1.6
 GPS_CLIP_LENGTH = 5.0
 GPS_CLIP_OVERHANG = 1.0
-GPS_REFERENCE_GAP = 0.2
+GPS_EDGE_SUPPORT_WIDTH = 0.8
+GPS_COMPONENT_KEEPOUT_INSET = 1.2
 
 WALL = 2.4
 FLOOR = 2.4
@@ -90,11 +105,9 @@ def rear_wall_hole(comp, name, center_x, center_z, wall_y, diameter):
 
 
 def gps_cradle_layout(outer_l, outer_w, x_offset=0):
-    """Return the board envelope with its offset SMA facing the rear wall."""
+    """Return the board envelope with the SMA base against the rear wall."""
     board_x = x_offset + (outer_l - GPS_BOARD_WIDTH) / 2
-    # Leave one clip thickness behind the PCB so the rear stops remain fully
-    # inside the case wall. The SMA barrel bridges this small setback.
-    board_rear_y = outer_w - WALL - GPS_CLIP_THICKNESS - CLEARANCE
+    board_rear_y = outer_w - WALL
     return {
         'x': board_x,
         'y': board_rear_y - GPS_BOARD_LENGTH,
@@ -103,6 +116,26 @@ def gps_cradle_layout(outer_l, outer_w, x_offset=0):
         'sma_center_x': board_x + GPS_BOARD_WIDTH - SMA_CENTER_FROM_RIGHT,
         'sma_tip_y': board_rear_y + SMA_PROJECTION,
     }
+
+
+def gps_sma_wall_features(comp, outer_l, outer_w, outer_h):
+    """Cut the top-open SMA slot and the shallow external tightening recess."""
+    gps = gps_cradle_layout(outer_l, outer_w)
+    sma_opening_z = outer_h - SMA_SLOT_HEIGHT
+    rectangle_feature(
+        comp, 'GPS SMA opening', gps['sma_center_x'] - SMA_SLOT_WIDTH / 2,
+        outer_w - WALL - 1, sma_opening_z,
+        SMA_SLOT_WIDTH, WALL + 2, SMA_SLOT_HEIGHT + 1.0,
+        adsk.fusion.FeatureOperations.CutFeatureOperation
+    )
+    recess_depth = WALL - SMA_LOCAL_WALL
+    rectangle_feature(
+        comp, 'GPS SMA outside recess',
+        gps['sma_center_x'] - SMA_RECESS_WIDTH / 2,
+        outer_w - recess_depth, sma_opening_z,
+        SMA_RECESS_WIDTH, recess_depth + 1.0, SMA_SLOT_HEIGHT + 1.0,
+        adsk.fusion.FeatureOperations.CutFeatureOperation
+    )
 
 
 def body_shell(comp):
@@ -159,15 +192,10 @@ def body_shell(comp):
     rectangle_feature(comp, 'MicroSD opening', -1.0, 23.0, 4.0,
                       WALL + 2, 18.0, 8.0, adsk.fusion.FeatureOperations.CutFeatureOperation)
 
-    # Top-open slot: the lid-mounted board drops in with its SMA connector
-    # already fitted. The connector is offset 6 mm from the board's right edge.
-    gps = gps_cradle_layout(outer_l, outer_w)
-    rectangle_feature(
-        comp, 'GPS SMA opening', gps['sma_center_x'] - SMA_SLOT_WIDTH / 2,
-        outer_w - WALL - 1, outer_h - 12.0,
-        SMA_SLOT_WIDTH, WALL + 2, 13.0,
-        adsk.fusion.FeatureOperations.CutFeatureOperation
-    )
+    # Top-open slot: the lid-mounted board drops in with the 5 mm SMA barrel
+    # already fitted. A shallow outside recess leaves 2 mm of local wall so an
+    # antenna that stops 3 mm from the SMA base can still tighten completely.
+    gps_sma_wall_features(comp, outer_l, outer_w, outer_h)
 
 
 def lid(comp, x_offset=0):
@@ -202,16 +230,25 @@ def lid(comp, x_offset=0):
                       rim_t, CASE_INNER_WIDTH - 16, rim_h,
                       adsk.fusion.FeatureOperations.JoinFeatureOperation)
 
-    # GPS cradle on the inside of the lid. Its long axis runs front-to-rear,
-    # leaving the rear SMA connector and front Dupont header unobstructed.
-    # Four short snap lips touch only the PCB side edges, away from components.
+    # GPS cradle on the inside of the lid. Narrow ledges support only the free
+    # PCB edges and lift the shield clear of the lid. The five straight pins
+    # and their cable path remain fully open toward the case interior.
     gps_x = gps['x']
     gps_y = gps['y']
-    rail_x_left = gps_x - CLEARANCE - GPS_CLIP_THICKNESS
-    rail_x_right = gps_x + GPS_BOARD_WIDTH + CLEARANCE
+    board_z = LID_THICKNESS + GPS_BACK_COMPONENT_DEPTH + GPS_FIT_CLEARANCE
+    rail_x_left = gps_x - GPS_FIT_CLEARANCE - GPS_CLIP_THICKNESS
+    rail_x_right = gps_x + GPS_BOARD_WIDTH + GPS_FIT_CLEARANCE
     rail_y = gps_y + 2.0
     rail_length = GPS_BOARD_LENGTH - 4.0
-    rail_h = GPS_BOARD_THICKNESS + 1.3
+    support_h = board_z - LID_THICKNESS
+    rail_h = support_h + GPS_BOARD_THICKNESS + 0.8
+    rectangle_feature(comp, 'GPS left edge support', gps_x, rail_y,
+                      LID_THICKNESS, GPS_EDGE_SUPPORT_WIDTH, rail_length,
+                      support_h, adsk.fusion.FeatureOperations.JoinFeatureOperation)
+    rectangle_feature(comp, 'GPS right edge support',
+                      gps_x + GPS_BOARD_WIDTH - GPS_EDGE_SUPPORT_WIDTH, rail_y,
+                      LID_THICKNESS, GPS_EDGE_SUPPORT_WIDTH, rail_length,
+                      support_h, adsk.fusion.FeatureOperations.JoinFeatureOperation)
     rectangle_feature(comp, 'GPS left rail', rail_x_left, rail_y, LID_THICKNESS,
                       GPS_CLIP_THICKNESS, rail_length, rail_h,
                       adsk.fusion.FeatureOperations.JoinFeatureOperation)
@@ -219,10 +256,10 @@ def lid(comp, x_offset=0):
                       GPS_CLIP_THICKNESS, rail_length, rail_h,
                       adsk.fusion.FeatureOperations.JoinFeatureOperation)
 
-    # Corner stops prevent lengthwise movement while keeping the SMA and
-    # four-wire Dupont connector paths clear.
-    stop_width = 4.0
-    stop_h = GPS_BOARD_THICKNESS + 0.5
+    # Tiny corner latches stay outside the centred five-pin bank. The entire
+    # front edge between them is open for the 8 mm pins and Dupont leads.
+    stop_width = GPS_EDGE_SUPPORT_WIDTH
+    stop_h = support_h + GPS_BOARD_THICKNESS + 0.5
     front_stop_y = gps_y - GPS_CLIP_THICKNESS
     rectangle_feature(comp, 'GPS front stop left', gps_x, front_stop_y,
                       LID_THICKNESS, stop_width, GPS_CLIP_THICKNESS, stop_h,
@@ -232,16 +269,10 @@ def lid(comp, x_offset=0):
                       LID_THICKNESS, stop_width, GPS_CLIP_THICKNESS, stop_h,
                       adsk.fusion.FeatureOperations.JoinFeatureOperation)
 
-    # The SMA is close enough to the right corner that a right rear stop would
-    # cross its 9 mm opening. A single left rear stop locates the PCB while the
-    # full connector corridor remains unobstructed.
-    rectangle_feature(comp, 'GPS rear stop left', gps_x,
-                      gps['rear_y'] + CLEARANCE, LID_THICKNESS,
-                      stop_width, GPS_CLIP_THICKNESS, stop_h,
-                      adsk.fusion.FeatureOperations.JoinFeatureOperation)
-
-    lip_z = LID_THICKNESS + GPS_BOARD_THICKNESS + 0.3
-    lip_width = GPS_CLIP_THICKNESS + CLEARANCE + GPS_CLIP_OVERHANG
+    # The rear PCB edge and SMA base sit directly against the inside wall, so
+    # no printed rear stop is needed and no stop can collide with the SMA.
+    lip_z = board_z + GPS_BOARD_THICKNESS + GPS_FIT_CLEARANCE
+    lip_width = GPS_CLIP_THICKNESS + GPS_FIT_CLEARANCE + GPS_CLIP_OVERHANG
     for position, clip_y in (('front', gps_y + 4.0),
                              ('rear', gps['rear_y'] - 4.0 - GPS_CLIP_LENGTH)):
         rectangle_feature(comp, f'GPS {position} clip left', rail_x_left, clip_y,
@@ -265,22 +296,50 @@ def lid(comp, x_offset=0):
 
 
 def gps_reference(comp, x_offset=0):
-    """Add a third body representing the measured GPS PCB and SMA envelope."""
+    """Add a measured GPS reference with component, SMA, and pin envelopes."""
     outer_l = CASE_INNER_LENGTH + 2 * WALL
     outer_w = CASE_INNER_WIDTH + 2 * WALL
     gps = gps_cradle_layout(outer_l, outer_w, x_offset)
-    reference_z = LID_THICKNESS + GPS_REFERENCE_GAP
+    board_z = LID_THICKNESS + GPS_BACK_COMPONENT_DEPTH + GPS_FIT_CLEARANCE
 
     rectangle_feature(
-        comp, 'GPS reference PCB', gps['x'], gps['y'], reference_z,
+        comp, 'GPS reference PCB', gps['x'], gps['y'], board_z,
         GPS_BOARD_WIDTH, GPS_BOARD_LENGTH, GPS_BOARD_THICKNESS,
     )
     rectangle_feature(
-        comp, 'GPS reference SMA', gps['sma_center_x'] - SMA_SLOT_WIDTH / 2,
-        gps['rear_y'], reference_z, SMA_SLOT_WIDTH, SMA_PROJECTION,
-        GPS_BOARD_THICKNESS,
+        comp, 'GPS reference component keepout',
+        gps['x'] + GPS_COMPONENT_KEEPOUT_INSET,
+        gps['y'] + GPS_COMPONENT_KEEPOUT_INSET,
+        board_z - GPS_BACK_COMPONENT_DEPTH,
+        GPS_BOARD_WIDTH - 2 * GPS_COMPONENT_KEEPOUT_INSET,
+        GPS_BOARD_LENGTH - 2 * GPS_COMPONENT_KEEPOUT_INSET,
+        GPS_MODULE_DEPTH,
         adsk.fusion.FeatureOperations.JoinFeatureOperation,
     )
+    rectangle_feature(
+        comp, 'GPS reference SMA base', gps['x'] + GPS_BOARD_WIDTH - SMA_BASE_WIDTH,
+        gps['rear_y'] - SMA_BASE_LENGTH, board_z + GPS_BOARD_THICKNESS,
+        SMA_BASE_WIDTH, SMA_BASE_LENGTH, SMA_BASE_DEPTH,
+        adsk.fusion.FeatureOperations.JoinFeatureOperation,
+    )
+    rectangle_feature(
+        comp, 'GPS reference SMA thread',
+        gps['sma_center_x'] - SMA_THREAD_DIAMETER / 2, gps['rear_y'],
+        board_z + GPS_BOARD_THICKNESS / 2 - SMA_THREAD_DIAMETER / 2,
+        SMA_THREAD_DIAMETER, SMA_PROJECTION, SMA_THREAD_DIAMETER,
+        adsk.fusion.FeatureOperations.JoinFeatureOperation,
+    )
+    pin_bank_width = (GPS_PIN_COUNT - 1) * GPS_PIN_PITCH
+    first_pin_x = gps['center_x'] - pin_bank_width / 2
+    for index in range(GPS_PIN_COUNT):
+        rectangle_feature(
+            comp, f'GPS reference pin {index + 1}',
+            first_pin_x + index * GPS_PIN_PITCH - GPS_PIN_WIDTH / 2,
+            gps['y'] - GPS_PIN_LENGTH,
+            board_z + GPS_BOARD_THICKNESS,
+            GPS_PIN_WIDTH, GPS_PIN_LENGTH, GPS_PIN_WIDTH,
+            adsk.fusion.FeatureOperations.JoinFeatureOperation,
+        )
 
 
 def run(context):
@@ -298,8 +357,8 @@ def run(context):
         lid(root, 110.0)
         gps_reference(root, 110.0)
         app.activeViewport.fit()
-        ui.messageBox('Case generated. Body, lid, and GPS reference are three separate '
-                      'bodies. The reference shows the measured PCB and SMA envelope.')
+        ui.messageBox('Case generated. The GPS reference shows the measured PCB, '
+                      '8 mm component envelope, 5 pins, and offset SMA geometry.')
     except Exception:
         if ui:
             ui.messageBox('Failed:\n{}'.format(traceback.format_exc()))

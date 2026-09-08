@@ -6,30 +6,35 @@ object used to check the cradle and SMA opening visually in Fusion 360.
 
 ## GPS carrier reference
 
-The cradle follows the supplied photo and the measured dimensions of the blue
-carrier:
+The cradle follows the supplied front, rear, and side photos and the measured
+dimensions of the blue carrier:
 
 - PCB envelope: 18 × 23 mm;
+- complete component envelope across both PCB faces: 8 mm;
+- five straight pins extending 8 mm from the edge toward the case interior;
 - SMA connector pointing toward the rear/top edge of the lid;
-- SMA projection beyond the PCB edge: 10 mm;
-- with the chip facing inward, SMA axis 6 mm from the right PCB corner,
-  exposed through a 10 mm top-open rear slot aligned to the retaining cradle;
-- four-pin Dupont header on the opposite short edge, with an unobstructed cable
-  path toward the Raspberry Pi;
-- component side facing the inside of the case;
+- SMA base: 7 × 7 × 1 mm, beginning at the top-right PCB corner when viewed
+  from the component/pin side;
+- SMA threaded section: 5 mm diameter and 8 mm projection from its base;
+- the shield/chip face points toward the lid while the component and pin face
+  points toward the case interior;
+- the SMA passes through a 5.6 mm top-open rear slot;
+- the general 2.4 mm wall is recessed to 2 mm around the SMA, leaving about
+  1 mm clearance before an attached antenna that stops 3 mm from the base;
 - four short side clips grip the PCB edges without spanning the SMA or header;
-- the rear-right corner stop is omitted so it cannot obstruct the offset SMA.
+- two 0.8 mm edge ledges lift the board clear of the lid-side shield;
+- only the two extreme front corners are retained, leaving the pin bank and
+  cable path open.
 
-The board envelope and SMA position are user measurements. PCB thickness and
-component height remain estimates; adjust `GPS_BOARD_THICKNESS`,
-`GPS_MAX_COMPONENT_HEIGHT`, and `CLEARANCE` if caliper measurements differ. A
-small cradle-only test print is recommended before printing the full case.
+The PCB, overall module, pin, and SMA dimensions are user measurements. The
+1.6 mm PCB thickness and the equal split of the remaining component depth
+between the two PCB faces are modelling assumptions because only the complete
+8 mm depth was measured. Adjust `GPS_BOARD_THICKNESS`,
+`GPS_BACK_COMPONENT_DEPTH`, and `GPS_FRONT_COMPONENT_DEPTH` if separate face
+measurements become available. A cradle-only test print is recommended before
+printing the full case.
 
-The third GPS reference object reproduces the measured top-view envelope as a
-single body: an 18 × 23 × 1.6 mm PCB joined to a 10 × 10 mm SMA extension whose
-axis is 6 mm from the PCB's right edge. It is positioned inside the lid cradle
-with a 0.2 mm visual separation from the lid.
-
-`GPS_MAX_COMPONENT_HEIGHT` records an 8 mm component keep-out estimate from the
-photo. It does not set the clip height: the clips retain the PCB itself so they
-do not press on the module components.
+The GPS reference object includes the PCB, an inset 8 mm component keep-out,
+the 7 mm SMA base, the 5 × 8 mm threaded-section envelope, and five individual
+8 mm pin envelopes. The clips retain only the PCB edges and do not press on the
+component keep-out.
