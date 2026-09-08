@@ -20,6 +20,8 @@ dimensions of the blue carrier:
   points toward the case interior;
 - the lid is flipped 180 degrees around its front-rear axis for assembly, so
   the SMA hole position is mirrored left-to-right on the case;
+- the vertical SMA axis is measured down from the assembled lid's inner face;
+  the lid plate itself is not part of that offset;
 - the SMA passes through a circular 5.6 mm rear-wall hole aligned with its
   assembled axis;
 - a circular external counterbore reduces the general 2.4 mm wall to 2 mm

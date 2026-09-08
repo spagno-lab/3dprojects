@@ -131,14 +131,15 @@ def gps_sma_wall_features(comp, target_body, outer_l, outer_w, outer_h):
     """Cut the round SMA hole and its shallow external tightening recess."""
     gps = gps_cradle_layout(outer_l, outer_w)
     # The generated lid must be flipped 180 degrees around its front-rear axis
-    # before assembly. Mirror both its lateral and vertical coordinates into
-    # the case coordinate system to obtain the assembled SMA axis.
+    # before assembly. Mirror its lateral coordinate, then place the SMA axis
+    # below the lid's inner face. outer_h already locates that inner face, so
+    # LID_THICKNESS must not be counted again in the vertical offset.
     sma_center_x = outer_l - gps['sma_center_x']
-    reference_axis_z = (
-        LID_THICKNESS + GPS_BACK_COMPONENT_DEPTH + GPS_FIT_CLEARANCE
+    axis_below_lid_inner_face = (
+        GPS_BACK_COMPONENT_DEPTH + GPS_FIT_CLEARANCE
         + GPS_BOARD_THICKNESS / 2
     )
-    sma_center_z = outer_h - reference_axis_z
+    sma_center_z = outer_h - axis_below_lid_inner_face
     rear_wall_hole(
         comp, target_body, 'GPS SMA hole', sma_center_x, sma_center_z,
         outer_w - WALL / 2, SMA_HOLE_DIAMETER, WALL + 2.0,
