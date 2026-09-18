@@ -114,10 +114,10 @@ class RaspberryPi4GpsCaseTest(unittest.TestCase):
         # 1 mm side clearance: the measured reference case puts the mounting
         # holes at 6.95 mm, the old 2.5 mm clearance pushed them to 8.4 mm and
         # moved the connectors away from their openings.
-        self.assertAlmostEqual(layout['x'], 3.5)
-        self.assertAlmostEqual(layout['y'], 3.5)
-        self.assertAlmostEqual(layout['mount_x'], 7.0)
-        self.assertAlmostEqual(layout['mount_y'], 7.0)
+        self.assertAlmostEqual(layout['x'], 2.9)
+        self.assertAlmostEqual(layout['y'], 2.9)
+        self.assertAlmostEqual(layout['mount_x'], 6.4)
+        self.assertAlmostEqual(layout['mount_y'], 6.4)
         self.assertAlmostEqual(layout['bottom_z'], 5.5)
         self.assertAlmostEqual(layout['top_z'], 7.1)
 
@@ -126,13 +126,13 @@ class RaspberryPi4GpsCaseTest(unittest.TestCase):
                     for opening in module.pi_io_openings()}
 
         expected = {
-            'USB-C opening': ('front', 8.4, 13.8, 6.3, 6.1),
-            'Micro-HDMI 1 opening': ('front', 24.7, 10.1, 6.3, 6.1),
-            'Micro-HDMI 2 opening': ('front', 38.5, 10.1, 6.3, 6.1),
-            'Audio opening': ('front', 52.3, 10.1, 6.3, 8.5),
-            'USB 2 opening': ('right', 4.4, 16.3, 6.3, 17.2),
-            'USB 3 opening': ('right', 21.4, 16.3, 6.3, 17.2),
-            'Ethernet opening': ('right', 38.65, 19.5, 6.3, 15.2),
+            'USB-C opening': ('front', 7.8, 13.8, 6.3, 6.1),
+            'Micro-HDMI 1 opening': ('front', 24.1, 10.1, 6.3, 6.1),
+            'Micro-HDMI 2 opening': ('front', 37.9, 10.1, 6.3, 6.1),
+            'Audio opening': ('front', 51.7, 10.1, 6.3, 8.5),
+            'USB 2 opening': ('right', 3.8, 16.3, 6.3, 17.2),
+            'USB 3 opening': ('right', 20.8, 16.3, 6.3, 17.2),
+            'Ethernet opening': ('right', 38.05, 19.5, 6.3, 15.2),
         }
         for name, (wall, start, span, z, height) in expected.items():
             opening = openings[name]
@@ -144,7 +144,7 @@ class RaspberryPi4GpsCaseTest(unittest.TestCase):
 
         microsd = openings['MicroSD opening']
         self.assertEqual(microsd['wall'], 'left')
-        self.assertAlmostEqual(microsd['start'], 22.545)
+        self.assertAlmostEqual(microsd['start'], 21.945)
         self.assertEqual(microsd['span'], 18.0)
         self.assertAlmostEqual(microsd['z'], 3.0)
         self.assertEqual(microsd['height'], 8.0)
@@ -154,8 +154,8 @@ class RaspberryPi4GpsCaseTest(unittest.TestCase):
         outer_w = module.CASE_INNER_WIDTH + 2 * module.WALL
         cells, gps_keepout = module.lid_mesh_layout(outer_l, outer_w, 110.0)
 
-        # 39 cells with the current 92 x 63 footprint and GPS keep-out.
-        self.assertGreaterEqual(len(cells), 36)
+        # 34 cells with the 90.8 x 61.8 footprint and the GPS keep-out.
+        self.assertGreaterEqual(len(cells), 30)
         self.assertEqual(module.LID_MESH_PITCH - module.LID_MESH_OPENING, 2.0)
         self.assertTrue(all(
             110.0 + module.LID_MESH_EDGE_MARGIN <= cell[0]
@@ -319,43 +319,70 @@ class ScrewlessRetentionTest(unittest.TestCase):
             module.PI_BOARD_EDGE_CLEARANCE, module.PI_SIDE_CLEARANCE)
         self.assertLessEqual(module.PI_SIDE_CLEARANCE, 1.0)
 
-    def test_no_screw_posts_remain_and_pegs_fit_the_mounting_holes(self):
+    def test_no_screw_posts_and_nothing_in_the_mounting_holes(self):
         source = script.read_text()
         self.assertNotIn('Pi post', source)
-        self.assertLess(module.PI_PEG_DIAMETER, module.PI_MOUNT_HOLE_DIAMETER)
+        self.assertNotIn('PI_PEG_DIAMETER', source)
 
-    def test_retention_uses_four_standoffs_and_four_clips(self):
+    def _retention_features(self):
         cylinders, rectangles = [], []
 
         def capture_cylinder(comp, name, cx, cy, z, diameter, height,
                              operation='join', participant_bodies=None):
-            cylinders.append((name, cx, cy, z, diameter, height))
+            cylinders.append({'name': name, 'x': cx, 'y': cy, 'z': z})
 
         def capture_rectangle(comp, name, x, y, z, length, width, height,
                               operation='new-body', participant_bodies=None):
-            rectangles.append((name, x, y, z, length, width, height))
+            rectangles.append({
+                'name': name, 'x': x, 'y': y, 'z': z,
+                'length': length, 'width': width, 'height': height,
+                'operation': operation,
+            })
 
         with mock.patch.object(module, 'cylinder_feature', capture_cylinder), \
                 mock.patch.object(module, 'rectangle_feature', capture_rectangle):
             module.pi_retention(None)
+        return cylinders, rectangles
 
-        standoffs = [c for c in cylinders if 'standoff' in c[0]]
-        pegs = [c for c in cylinders if 'peg' in c[0]]
-        arms = [r for r in rectangles if 'clip arm' in r[0]]
-        hooks = [r for r in rectangles if 'clip hook' in r[0]]
-        self.assertEqual(len(standoffs), 4)
-        self.assertEqual(len(pegs), 4)
-        self.assertEqual(len(arms), 4)
-        self.assertEqual(len(hooks), 4)
+    def test_retention_is_tilt_and_snap_with_nothing_in_the_holes(self):
+        cylinders, rectangles = self._retention_features()
 
+        # Four supports, and deliberately no peg: a peg would block the tilt.
+        self.assertEqual(len([c for c in cylinders if 'standoff' in c['name']]), 4)
+        self.assertEqual(len([c for c in cylinders if 'peg' in c['name']]), 0)
+        self.assertFalse(hasattr(module, 'PI_PEG_DIAMETER'))
+
+        lips = [r for r in rectangles if 'retaining lip' in r['name']]
+        hooks = [r for r in rectangles if 'clip hook' in r['name']]
+        self.assertEqual(len(lips), 2)
+        self.assertEqual(len(hooks), 2)
+
+    def test_retention_never_crosses_a_port_opening(self):
+        """The right wall is all USB and Ethernet and the left wall carries the
+        microSD slot, so retention has to live in the free stretches."""
+        _, rectangles = self._retention_features()
         layout = module.pi_layout()
-        # Every hook must overhang the board, i.e. start at the PCB top face.
-        for hook in hooks:
-            self.assertAlmostEqual(
-                hook[3], layout['bottom_z'] + module.PI_BOARD_THICKNESS)
-            # The hook spans the edge gap plus the overlap on the board.
-            self.assertEqual(
-                hook[4], module.PI_CLIP_OVERHANG + module.PI_CLIP_EDGE_GAP)
+        board_x = layout['x']
+        board_y = layout['y']
+
+        for opening in module.pi_io_openings():
+            for feature in rectangles:
+                if not feature['name'].startswith('Pi clip'):
+                    continue
+                if opening['wall'] == 'front' and feature['y'] < board_y:
+                    overlaps = not (
+                        feature['x'] + feature['length'] <= opening['start']
+                        or feature['x'] >= opening['start'] + opening['span'])
+                    self.assertFalse(
+                        overlaps,
+                        f"{feature['name']} crosses {opening['name']}")
+                if opening['wall'] == 'left' and feature['x'] < board_x:
+                    overlaps = not (
+                        feature['y'] + feature['width'] <= opening['start']
+                        or feature['y'] >= opening['start'] + opening['span'])
+                    self.assertFalse(
+                        overlaps,
+                        f"{feature['name']} crosses {opening['name']}")
 
     def test_clips_actually_grip_the_board_and_can_flex(self):
         """The first attempt had hooks tangent to the PCB edge and arms buried
@@ -375,40 +402,43 @@ class ScrewlessRetentionTest(unittest.TestCase):
             module.pi_retention(None)
 
         layout = module.pi_layout()
-        board_start = layout['x']
-        board_end = board_start + module.PI_BOARD_LENGTH
-        outer_l = module.CASE_INNER_LENGTH + 2 * module.WALL
+        board_x = (layout['x'], layout['x'] + module.PI_BOARD_LENGTH)
+        board_y = (layout['y'], layout['y'] + module.PI_BOARD_WIDTH)
 
-        hooks = [r for r in rectangles if 'clip hook' in r['name']]
-        self.assertEqual(len(hooks), 4)
-        for hook in hooks:
-            overlap = (min(hook['x'] + hook['length'], board_end)
-                       - max(hook['x'], board_start))
-            self.assertAlmostEqual(overlap, module.PI_CLIP_OVERHANG)
-            self.assertGreater(overlap, 0.0)
+        def overlap(feature, axis):
+            if axis == 'x':
+                return (min(feature['x'] + feature['length'], board_x[1])
+                        - max(feature['x'], board_x[0]))
+            return (min(feature['y'] + feature['width'], board_y[1])
+                    - max(feature['y'], board_y[0]))
+
+        # Every retaining feature must actually sit over the board.
+        for lip in [r for r in rectangles if 'retaining lip' in r['name']]:
+            self.assertAlmostEqual(overlap(lip, 'y'), module.PI_LIP_OVERHANG)
+        for hook in [r for r in rectangles if 'clip hook' in r['name']]:
+            axis = 'y' if hook['name'].endswith('front') else 'x'
+            self.assertAlmostEqual(overlap(hook, axis), module.PI_CLIP_OVERHANG)
 
         # The arm can only bend by the width of its relief slot.
         self.assertGreater(module.PI_CLIP_RELIEF, module.PI_CLIP_OVERHANG)
 
         reliefs = [r for r in rectangles if 'clip relief' in r['name']]
-        self.assertEqual(len(reliefs), 4)
+        self.assertEqual(len(reliefs), 2)
         for relief in reliefs:
             self.assertEqual(relief['operation'],
                              module.adsk.fusion.FeatureOperations.CutFeatureOperation)
-            # A blind slot: it must never reach either outer face.
-            self.assertGreater(relief['x'], 0.0)
-            self.assertLess(relief['x'] + relief['length'], outer_l)
+            # Blind slot: the locally thickened wall must survive behind it.
+            remaining = (module.PI_CLIP_BOSS + module.WALL - module.PI_CLIP_RELIEF
+                         - module.PI_CLIP_THICKNESS - module.PI_SIDE_CLEARANCE
+                         - module.PI_CLIP_EDGE_GAP)
+            self.assertGreaterEqual(remaining, 1.2)
 
-        arms = [r for r in rectangles if 'clip arm' in r['name']]
-        self.assertEqual(len(arms), 4)
-        for arm in arms:
-            # Free on the board side, relieved on the wall side.
-            self.assertGreater(arm['x'], 0.0)
-            self.assertLess(arm['x'] + arm['length'], outer_l)
+        self.assertEqual(
+            len([r for r in rectangles if 'clip arm' in r['name']]), 2)
 
-    def test_pegs_limit_lateral_play(self):
-        play = (module.PI_MOUNT_HOLE_DIAMETER - module.PI_PEG_DIAMETER) / 2
-        self.assertLessEqual(play, 0.2)
+    def test_side_clearance_alone_locates_the_board(self):
+        # Without pegs the cavity itself has to hold the board laterally.
+        self.assertLessEqual(module.PI_SIDE_CLEARANCE, 0.5)
 
     def test_every_opening_stays_inside_the_board_footprint(self):
         layout = module.pi_layout()
@@ -431,9 +461,9 @@ class ScrewlessRetentionTest(unittest.TestCase):
         case_latches = module.lid_latch_positions()
         lid_latches = module.lid_latch_positions(110.0)
         self.assertEqual(len(case_latches['x_positions']), 2)
-        self.assertEqual(
-            [x - 110.0 for x in lid_latches['x_positions']],
-            list(case_latches['x_positions']))
+        for lid_x, case_x in zip(lid_latches['x_positions'],
+                                 case_latches['x_positions']):
+            self.assertAlmostEqual(lid_x - 110.0, case_x)
 
     def test_lid_bumps_and_case_pockets_share_the_same_height(self):
         rectangles = []

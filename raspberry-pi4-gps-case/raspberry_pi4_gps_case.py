@@ -7,21 +7,26 @@ import traceback
 # Raspberry Pi 4 Model B, official mechanical drawing.
 # Datum: PCB corner on the micro-USB-C side of the connector long edge.
 # ---------------------------------------------------------------------------
-PI_SIDE_CLEARANCE = 1.0
+# 0.4 mm of side clearance locates the board laterally on its own, so no pegs
+# are needed in the mounting holes.
+PI_SIDE_CLEARANCE = 0.4
 PI_STANDOFF_HEIGHT = 3.0
 PI_STANDOFF_DIAMETER = 5.0
-PI_PEG_HEIGHT = 1.6
 
-# Screwless PCB retention. The arm needs free space on both faces or it cannot
-# flex, so a shallow pocket is cut into the wall behind each clip. The hook can
-# only overhang the board by less than the relief gap, otherwise the arm would
-# have to bend further than the slot allows.
+# Screwless PCB retention, tilt-and-snap. Rigid lips on the microSD side take
+# the board edge first, then the opposite side drops past two flexible clips.
+# Pegs in the mounting holes were dropped: they blocked the tilt and forced the
+# board to deflect every clip simultaneously.
+PI_CLIP_BOSS = 2.2
+PI_LIP_LENGTH = 14.0
+PI_LIP_OVERHANG = 1.2
+PI_LIP_HEIGHT = 1.4
 PI_CLIP_THICKNESS = 1.4
-PI_CLIP_LENGTH = 12.0
-PI_CLIP_RELIEF = 0.8
-PI_CLIP_OVERHANG = 0.6
+PI_CLIP_LENGTH = 14.0
+PI_CLIP_RELIEF = 1.0
+PI_CLIP_OVERHANG = 0.8
 PI_CLIP_EDGE_GAP = 0.2
-PI_CLIP_LEAD_IN = 1.0
+PI_CLIP_LEAD_IN = 1.2
 PI_CLIP_POCKET_MARGIN = 1.0
 
 # ---------------------------------------------------------------------------
@@ -72,7 +77,6 @@ PI_MOUNT_X = 58.0
 PI_MOUNT_Y = 49.0
 PI_MOUNT_EDGE_OFFSET = 3.5
 PI_MOUNT_HOLE_DIAMETER = 2.7
-PI_PEG_DIAMETER = PI_MOUNT_HOLE_DIAMETER - 0.3
 PI_IO_CLEARANCE = 0.8
 
 # Connector envelopes in the public reference model's board coordinates.
@@ -326,11 +330,19 @@ def rear_wall_hole(comp, target_body, name, center_x, center_z, wall_y,
 
 
 def pi_retention(comp):
-    """Screwless retention: locating pegs plus four cantilever clips.
+    """Screwless retention, tilt-and-snap, placed clear of every connector.
 
-    The printed M2.5 posts were dropped. The board drops onto four standoffs
-    whose small pegs enter the mounting holes, and four clips snap over the
-    board edge. PI_CLIP_OVERHANG of material sits on top of the PCB.
+    Assembly: slide the GPIO edge of the board under the two rigid lips on the
+    rear wall, then press the front edge down until the two clips snap over it.
+    Removal: push the clips outward and lift the front edge.
+
+    Placement is forced by the I/O: the right wall is full of USB and Ethernet,
+    the left wall carries the microSD slot, and the front wall only has a free
+    stretch beyond the audio jack. The rear GPIO wall is the one clear side, so
+    it takes the fixed lips.
+
+    Nothing sits in the mounting holes: pegs would block the tilt and force
+    every clip to deflect at once.
     """
     pi = pi_layout()
     holes = [
@@ -342,50 +354,67 @@ def pi_retention(comp):
     for index, (x, y) in enumerate(holes, 1):
         cylinder_feature(comp, f'Pi standoff {index}', x, y, FLOOR,
                          PI_STANDOFF_DIAMETER, PI_STANDOFF_HEIGHT)
-        cylinder_feature(comp, f'Pi locating peg {index}', x, y,
-                         pi['bottom_z'], PI_PEG_DIAMETER, PI_PEG_HEIGHT)
 
-    clip_z = pi['bottom_z']
-    board_top = clip_z + PI_BOARD_THICKNESS
-    arm_height = board_top - clip_z + PI_CLIP_LEAD_IN + 1.2
-    outer_l = CASE_INNER_LENGTH + 2 * WALL
+    board_top = pi['bottom_z'] + PI_BOARD_THICKNESS
+    board_rear_y = pi['y'] + PI_BOARD_WIDTH
+    rear_wall_inner = WALL + CASE_INNER_WIDTH
 
-    # Arm faces, measured from each PCB edge outward.
-    left_inner = pi['x'] - PI_CLIP_EDGE_GAP
-    left_outer = left_inner - PI_CLIP_THICKNESS
-    right_inner = pi['x'] + PI_BOARD_LENGTH + PI_CLIP_EDGE_GAP
-    right_outer = right_inner + PI_CLIP_THICKNESS
-
-    front_y = pi['y'] + 12.0
-    rear_y = pi['y'] + PI_BOARD_WIDTH - 12.0 - PI_CLIP_LENGTH
-    clips = (
-        ('front left', left_outer, front_y, True),
-        ('rear left', left_outer, rear_y, True),
-        ('front right', right_inner, front_y, False),
-        ('rear right', right_inner, rear_y, False),
-    )
-    for name, arm_x, y, is_left in clips:
-        # Blind relief slot behind the arm. It must not reach the outer face,
-        # otherwise the pocket becomes a through slot in the wall.
-        cut_x = (arm_x - PI_CLIP_RELIEF if is_left
-                 else arm_x + PI_CLIP_THICKNESS)
-        cut_length = PI_CLIP_RELIEF
+    # Fixed lips on the rear GPIO wall. They never flex: the board slides in
+    # underneath them, so they need no relief slot.
+    for name, x in (('left', pi['x'] + 12.0),
+                    ('right', pi['x'] + PI_BOARD_LENGTH - 12.0 - PI_LIP_LENGTH)):
         rectangle_feature(
-            comp, f'Pi clip relief {name}', cut_x,
-            y - PI_CLIP_POCKET_MARGIN, clip_z, cut_length,
-            PI_CLIP_LENGTH + 2 * PI_CLIP_POCKET_MARGIN,
+            comp, f'Pi retaining lip {name}', x,
+            board_rear_y - PI_LIP_OVERHANG, board_top,
+            PI_LIP_LENGTH, PI_LIP_OVERHANG + PI_SIDE_CLEARANCE, PI_LIP_HEIGHT,
+            adsk.fusion.FeatureOperations.JoinFeatureOperation)
+
+    # Flexible clips. Placement is dictated by the free wall stretches: the
+    # front wall is clear only past the audio jack, and the left wall is clear
+    # between the front corner and the microSD slot. One clip on each holds
+    # both front corners down. The wall is locally thickened outward so the
+    # relief slot never thins it.
+    arm_height = PI_BOARD_THICKNESS + PI_CLIP_LEAD_IN + 1.2
+    front_arm_y = pi['y'] - PI_CLIP_EDGE_GAP - PI_CLIP_THICKNESS
+    left_arm_x = pi['x'] - PI_CLIP_EDGE_GAP - PI_CLIP_THICKNESS
+    clips = (
+        ('front', pi['x'] + PI_BOARD_LENGTH - 10.0 - PI_CLIP_LENGTH),
+        ('left', pi['y'] + 3.0),
+    )
+    for wall, start in clips:
+        margin = PI_CLIP_POCKET_MARGIN
+        if wall == 'front':
+            boss = (start - margin, -PI_CLIP_BOSS,
+                    PI_CLIP_LENGTH + 2 * margin, PI_CLIP_BOSS)
+            relief = (start - margin, front_arm_y - PI_CLIP_RELIEF,
+                      PI_CLIP_LENGTH + 2 * margin, PI_CLIP_RELIEF)
+            arm = (start, front_arm_y, PI_CLIP_LENGTH, PI_CLIP_THICKNESS)
+            hook = (start, front_arm_y + PI_CLIP_THICKNESS,
+                    PI_CLIP_LENGTH, PI_CLIP_OVERHANG + PI_CLIP_EDGE_GAP)
+        else:
+            boss = (-PI_CLIP_BOSS, start - margin,
+                    PI_CLIP_BOSS, PI_CLIP_LENGTH + 2 * margin)
+            relief = (left_arm_x - PI_CLIP_RELIEF, start - margin,
+                      PI_CLIP_RELIEF, PI_CLIP_LENGTH + 2 * margin)
+            arm = (left_arm_x, start, PI_CLIP_THICKNESS, PI_CLIP_LENGTH)
+            hook = (left_arm_x + PI_CLIP_THICKNESS, start,
+                    PI_CLIP_OVERHANG + PI_CLIP_EDGE_GAP, PI_CLIP_LENGTH)
+        rectangle_feature(
+            comp, f'Pi clip boss {wall}', boss[0], boss[1], 0.0,
+            boss[2], boss[3], FLOOR + CASE_INNER_HEIGHT,
+            adsk.fusion.FeatureOperations.JoinFeatureOperation)
+        rectangle_feature(
+            comp, f'Pi clip relief {wall}', relief[0], relief[1],
+            pi['bottom_z'], relief[2], relief[3],
             arm_height + PI_CLIP_LEAD_IN,
             adsk.fusion.FeatureOperations.CutFeatureOperation)
         rectangle_feature(
-            comp, f'Pi clip arm {name}', arm_x, y, clip_z,
-            PI_CLIP_THICKNESS, PI_CLIP_LENGTH, arm_height,
+            comp, f'Pi clip arm {wall}', arm[0], arm[1], pi['bottom_z'],
+            arm[2], arm[3], arm_height,
             adsk.fusion.FeatureOperations.JoinFeatureOperation)
-        hook_x = (arm_x + PI_CLIP_THICKNESS if is_left
-                  else arm_x - PI_CLIP_OVERHANG - PI_CLIP_EDGE_GAP)
         rectangle_feature(
-            comp, f'Pi clip hook {name}', hook_x, y, board_top,
-            PI_CLIP_OVERHANG + PI_CLIP_EDGE_GAP, PI_CLIP_LENGTH,
-            PI_CLIP_LEAD_IN,
+            comp, f'Pi clip hook {wall}', hook[0], hook[1], board_top,
+            hook[2], hook[3], PI_CLIP_LEAD_IN,
             adsk.fusion.FeatureOperations.JoinFeatureOperation)
 
 
