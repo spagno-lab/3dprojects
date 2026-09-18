@@ -483,6 +483,21 @@ class ScrewlessRetentionTest(unittest.TestCase):
                         - pockets[0]['z'])
         self.assertAlmostEqual(bump_depth, pocket_depth)
 
+    def test_clip_bosses_stay_local_instead_of_running_full_height(self):
+        """The boss is a visible bulge on the outside of the case, so it must
+        stop just above the clip rather than climbing the whole wall."""
+        _, rectangles = self._retention_features()
+        bosses = [r for r in rectangles if 'clip boss' in r['name']]
+        arms = [r for r in rectangles if 'clip arm' in r['name']]
+        self.assertEqual(len(bosses), 2)
+
+        arm_top = max(a['z'] + a['height'] for a in arms)
+        case_height = module.FLOOR + module.CASE_INNER_HEIGHT
+        for boss in bosses:
+            boss_top = boss['z'] + boss['height']
+            self.assertGreaterEqual(boss_top, arm_top)
+            self.assertLess(boss_top, case_height / 2)
+
     def test_side_clearance_alone_locates_the_board(self):
         # Without pegs the cavity itself has to hold the board laterally.
         self.assertLessEqual(module.PI_SIDE_CLEARANCE, 0.5)

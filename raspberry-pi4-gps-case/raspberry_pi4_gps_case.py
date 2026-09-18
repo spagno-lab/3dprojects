@@ -18,6 +18,9 @@ PI_STANDOFF_DIAMETER = 5.0
 # Pegs in the mounting holes were dropped: they blocked the tilt and forced the
 # board to deflect every clip simultaneously.
 PI_CLIP_BOSS = 2.2
+# The boss only needs to exist where the clip is; running it the full height
+# of the case just puts two slabs on the outside.
+PI_CLIP_BOSS_MARGIN = 2.0
 PI_LIP_LENGTH = 14.0
 PI_LIP_OVERHANG = 1.2
 PI_LIP_HEIGHT = 1.4
@@ -411,9 +414,10 @@ def pi_retention(comp):
             arm = (left_arm_x, start, PI_CLIP_THICKNESS, PI_CLIP_LENGTH)
             hook = (left_arm_x + PI_CLIP_THICKNESS, start,
                     PI_CLIP_OVERHANG + PI_CLIP_EDGE_GAP, PI_CLIP_LENGTH)
+        boss_top = pi['bottom_z'] + arm_height + PI_CLIP_BOSS_MARGIN
         rectangle_feature(
             comp, f'Pi clip boss {wall}', boss[0], boss[1], 0.0,
-            boss[2], boss[3], FLOOR + CASE_INNER_HEIGHT,
+            boss[2], boss[3], boss_top,
             adsk.fusion.FeatureOperations.JoinFeatureOperation)
         rectangle_feature(
             comp, f'Pi clip relief {wall}', relief[0], relief[1],
