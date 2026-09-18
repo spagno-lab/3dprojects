@@ -137,6 +137,35 @@ def check_assembly_is_possible():
               f'ends at z {top:.2f}, parting plane {case.PARTING_Z:.2f}')
 
 
+def check_connectors_sit_in_their_openings():
+    """Each connector must clear its own opening on all sides.
+
+    This is what the preview shows and what nothing checked: an opening can be
+    open at the bottom and still be too short, too narrow or in the wrong
+    place for the connector it is cut for.
+    """
+    section('Connectors inside their openings')
+    pi = case.pi_layout()
+    openings = {o['name']: o for o in case.pi_io_openings()}
+    parts = {name: (rect, height)
+             for name, rect, height in case.pi_component_footprints()}
+
+    for name, opening in openings.items():
+        part_name = name.replace(' opening', '')
+        if part_name not in parts:
+            continue
+        rect, height = parts[part_name]
+        if opening['wall'] == 'front':
+            lo, hi = rect[0], rect[0] + rect[2]
+        else:
+            lo, hi = rect[1], rect[1] + rect[3]
+        side = min(lo - opening['start'],
+                   opening['start'] + opening['span'] - hi)
+        top = (opening['z'] + opening['height']) - (pi['top_z'] + height)
+        check(side > 0 and top > 0, part_name,
+              f'{side:.2f} mm each side, {top:.2f} mm above it')
+
+
 def check_pads_clear_components():
     """No press pad may land on a component."""
     section('Press pads against the Pi 4 components')
@@ -345,6 +374,7 @@ def check_standoffs():
 def main():
     check_board_envelope()
     check_assembly_is_possible()
+    check_connectors_sit_in_their_openings()
     check_pads_clear_components()
     check_pads_hold_the_board()
     check_tabs_clear_components()

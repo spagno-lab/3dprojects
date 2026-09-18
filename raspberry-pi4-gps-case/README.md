@@ -289,3 +289,24 @@ the geometry was loaded.
 One setting cannot live in a process preset: part cooling. Cap the fan at
 about 45 per cent in the PETG **filament** profile. It trades surface finish
 for layer adhesion at the root of the clips, which is where they break.
+
+## Preview
+
+```
+python3 preview.py                          # base, shell, lid, assembly
+python3 preview.py assembly --res 0.15      # finer
+python3 preview.py assembly --azimuth -140  # look at the I/O wall
+python3 preview.py testprint                # what the test print gives you
+```
+
+Writes `preview-<name>.png`. No Fusion, no mesh library: it imports the script
+with the Fusion API stubbed, records the extrude calls the builders make, and
+replays them onto a voxel grid in the same order. What you see is what the
+script would build, and it cannot drift, because there is no second model.
+
+`assembly` and `fit` draw the Pi reference body in green inside the case,
+through one depth buffer, so the board is seen through the openings rather
+than painted over them. That is the picture that would have made the original
+defect obvious in a second: connectors buried in a solid wall.
+
+0.2 mm voxels resolve every feature here; the thinnest is the 0.8 mm snap tab.
