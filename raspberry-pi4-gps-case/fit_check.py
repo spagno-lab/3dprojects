@@ -94,145 +94,147 @@ def check_board_envelope():
               f'front offset {start - case.WALL:.2f} mm')
 
 
-def check_connectors_clear_the_walls():
-    """The pocket has to clear the board's real envelope, connectors included.
+def check_pads_clear_components():
+    """No press pad may land on a component."""
+    section('Press pads against the Pi 4 components')
+    parts = case.pi_component_footprints()
+    for name, rect, _z, _h in case.pi_pad_layout():
+        worst = None
+        for part_name, part_rect, height in parts:
+            dx, dy = rect_overlap(rect, part_rect)
+            if dx > 0 and dy > 0 and (worst is None or min(dx, dy) > worst[1]):
+                worst = (part_name, min(dx, dy), height)
+        if worst:
+            check(False, name,
+                  f'lands on {worst[0]} by {worst[1]:.2f} mm, '
+                  f'and that part stands {worst[2]:.1f} mm above the PCB')
+        else:
+            margins = [(-min(rect_overlap(rect, r)), n)
+                       for n, r, _ in parts
+                       if max(rect_overlap(rect, r)) > 0]
+            closest = min(margins) if margins else (99.0, 'nothing')
+            check(True, name,
+                  f'clear, nearest is {closest[1]} at {closest[0]:.2f} mm')
 
-    This is the check that was missing. Everything else passed while the board
-    physically could not be put in the case: the pocket was sized to the bare
-    PCB, but USB and Ethernet stand 2.81 mm outside that outline, and the wall
-    openings are closed at the top, so nothing can descend into position.
-    """
-    section('Connector envelope against the walls')
+
+def check_pads_hold_the_board():
+    section('Board clamped between standoffs and shell')
     pi = case.pi_layout()
-    inner_top = case.FLOOR + case.CASE_INNER_HEIGHT
+    board = (pi['x'], pi['y'], case.PI_BOARD_LENGTH, case.PI_BOARD_WIDTH)
+    walls = set()
+    for name, rect, pad_z, _h in case.pi_pad_layout():
+        dx, dy = rect_overlap(rect, board)
+        grip = min(dx, dy)
+        check(abs(grip - case.PI_PAD_REACH) < EPS, f'{name} reach over the PCB',
+              f'{grip:.2f} mm')
+        check(pad_z < case.PARTING_Z - EPS, f'{name} preload',
+              f'reaches {case.PARTING_Z - pad_z:.2f} mm below the parting '
+              f'plane, so the board is clamped, not rattling')
+        walls.add(name.split()[3])
+    check(len(walls) >= 3, 'pads spread around the board',
+          f'{len(case.PI_PADS)} pads on {sorted(walls)}')
+
+
+def check_tabs_clear_components():
+    """A snap tab lives inside the wall, where the connectors also reach."""
+    section('Snap tabs against the connectors')
+    pi = case.pi_layout()
+    parts = case.pi_component_footprints()
+    for index, tab in enumerate(case.base_tab_layout(), 1):
+        label = f"tab {index} ({tab['wall']} @ {tab['start']:.1f} mm)"
+        envelope = tab['bump'] if tab['wall'] != 'left' else tab['bump']
+        span = (min(tab['arm'][0], envelope[0]), min(tab['arm'][1], envelope[1]),
+                max(tab['arm'][2], envelope[2]) + abs(tab['arm'][0] - envelope[0]),
+                max(tab['arm'][3], envelope[3]) + abs(tab['arm'][1] - envelope[1]))
+        hits = [(n, min(rect_overlap(span, r))) for n, r, _ in parts
+                if min(rect_overlap(span, r)) > 0]
+        if hits:
+            worst = max(hits, key=lambda h: h[1])
+            check(False, label, f'runs into {worst[0]} by {worst[1]:.2f} mm')
+        else:
+            margins = [(-min(rect_overlap(span, r)), n) for n, r, _ in parts
+                       if max(rect_overlap(span, r)) > 0]
+            closest = min(margins) if margins else (99.0, 'nothing')
+            check(True, label,
+                  f'clear, nearest is {closest[1]} at {closest[0]:.2f} mm')
+
+
+def check_tabs_clear_openings():
+    section('Snap tabs against the wall openings')
+    openings = case.pi_io_openings()
+    for index, tab in enumerate(case.base_tab_layout(), 1):
+        label = f"tab {index} ({tab['wall']})"
+        if tab['wall'] in ('front', 'rear'):
+            span = (tab['arm'][0], tab['arm'][0] + tab['arm'][2])
+        else:
+            span = (tab['arm'][1], tab['arm'][1] + tab['arm'][3])
+        hits = [(o['name'], overlap_1d(span[0], span[1], o['start'],
+                                      o['start'] + o['span']))
+                for o in openings if o['wall'] == tab['wall']]
+        clash = [h for h in hits if h[1] > 0]
+        check(not clash, label,
+              ', '.join(f'crosses {n} by {g:.2f} mm' for n, g in clash)
+              if clash else 'sits on a solid stretch of wall')
+
+
+def check_tab_wall_left():
+    section('Shell wall left at each tab')
+    slot = case.BASE_TAB_THICKNESS + case.BASE_TAB_CLEARANCE
+    remaining = case.WALL + case.BASE_TAB_BOSS - slot - case.BASE_TAB_BUMP
+    check(remaining >= MIN_SKIN - EPS, 'wall behind the bump pocket',
+          f'{remaining:.2f} mm, from {case.WALL:.1f} mm of wall plus a '
+          f'{case.BASE_TAB_BOSS:.1f} mm boss, less a {slot:.1f} mm slot and a '
+          f'{case.BASE_TAB_BUMP:.1f} mm pocket')
+
+
+def check_assembly_is_possible():
+    """The reason the box is split: the board's real envelope, connectors
+    included, is wider than any pocket that also has to retain it."""
+    section('Assembly')
+    pi = case.pi_layout()
 
     for label, proud in (
         ('connector long edge', case.PI_CONNECTOR_PROUD_FRONT),
         ('USB and Ethernet edge', case.PI_CONNECTOR_PROUD_RIGHT),
     ):
         bite = proud - case.PI_SIDE_CLEARANCE
-        check(bite <= 0, f'{label} against its wall',
-              f'connectors stand {proud:.2f} mm proud against {case.PI_SIDE_CLEARANCE:.2f} mm '
-              f'of clearance, so they bite {bite:+.2f} mm into the wall')
+        check(bite > 0, f'{label} reaches into its wall',
+              f'connectors stand {proud:.2f} mm proud against '
+              f'{case.PI_SIDE_CLEARANCE:.2f} mm of clearance, so they must '
+              f'enter the wall by {bite:.2f} mm — only an open-bottomed '
+              f'opening lets that happen')
 
-    blocked = []
+    check(abs(case.PARTING_Z - pi['top_z']) < EPS,
+          'parting plane is the top face of the PCB',
+          f"z {case.PARTING_Z:.2f}, board top {pi['top_z']:.2f}: above it the "
+          f'board is gone and only connectors remain')
+
+    closed = []
     for opening in case.pi_io_openings():
-        solid_above = inner_top - (opening['z'] + opening['height'])
-        if solid_above > 0:
-            blocked.append((opening['name'], solid_above))
-    check(not blocked,
-          'openings are open at the top so the board can be lowered in',
-          f'{len(blocked)} of {len(case.pi_io_openings())} openings have solid '
-          f'wall above them, up to '
-          f'{max(b for _, b in blocked) if blocked else 0:.1f} mm'
-          if blocked else 'every opening reaches the parting line')
+        if opening.get('part') != 'shell':
+            continue
+        if not opening.get('open_bottom'):
+            closed.append(opening['name'])
+        elif abs(opening['z'] - case.PARTING_Z) > EPS:
+            closed.append(opening['name'])
+    check(not closed, 'every connector opening is open at the parting plane',
+          'the shell can be lowered onto the board'
+          if not closed else f'{closed} would trap the connectors')
 
-
-def check_clips_clear_components():
-    """No clip hook may overhang a stretch of edge carrying a component."""
-    section('Clip hooks against the Pi 4 components')
-    parts = case.pi_component_footprints()
-    for index, clip in enumerate(case.pi_clip_layout(), 1):
-        tag = f"clip {index} ({clip['wall']} @ {clip['offset']:.0f} mm)"
-        worst = None
-        for name, rect, height in parts:
-            dx, dy = rect_overlap(clip['hook'], rect)
-            if dx > 0 and dy > 0:
-                if worst is None or min(dx, dy) > worst[1]:
-                    worst = (name, min(dx, dy), height)
-        if worst:
-            check(False, tag,
-                  f'hook runs into {worst[0]} by {worst[1]:.2f} mm, '
-                  f'and that part stands {worst[2]:.1f} mm above the PCB')
-        else:
-            margins = []
-            for name, rect, _ in parts:
-                dx, dy = rect_overlap(clip['hook'], rect)
-                if max(dx, dy) > 0:
-                    margins.append((-min(dx, dy), name))
-            closest = min(margins) if margins else (99.0, 'nothing')
-            check(True, tag,
-                  f'clear, nearest is {closest[1]} at {closest[0]:.2f} mm')
-
-
-def check_clips_clear_openings():
-    """A clip must not be cut in half by a wall opening."""
-    section('Clip arms against the wall openings')
-    openings = case.pi_io_openings()
-    for index, clip in enumerate(case.pi_clip_layout(), 1):
-        tag = f"clip {index} ({clip['wall']})"
-        arm_x, arm_y, arm_l, arm_w = clip['arm']
-        if clip['wall'] in ('front', 'rear'):
-            span = (arm_x, arm_x + arm_l)
-        else:
-            span = (arm_y, arm_y + arm_w)
-        hits = []
-        for opening in openings:
-            if opening['wall'] != clip['wall']:
-                continue
-            gap = overlap_1d(span[0], span[1], opening['start'],
-                             opening['start'] + opening['span'])
-            if gap > 0:
-                hits.append((opening['name'], gap))
-        if hits:
-            check(False, tag,
-                  ', '.join(f'crosses {n} by {g:.2f} mm' for n, g in hits))
-        else:
-            check(True, tag, 'sits on a solid stretch of wall')
-
-
-def check_clip_holds_the_board():
-    section('Retention')
-    pi = case.pi_layout()
-    board = (pi['x'], pi['y'], case.PI_BOARD_LENGTH, case.PI_BOARD_WIDTH)
-    walls = set()
-    for index, clip in enumerate(case.pi_clip_layout(), 1):
-        dx, dy = rect_overlap(clip['hook'], board)
-        grip = min(dx, dy)
-        check(abs(grip - case.PI_CLIP_OVERHANG) < 1e-6,
-              f"clip {index} ({clip['wall']}) grip on the PCB",
-              f'{grip:.2f} mm of the {case.PI_BOARD_THICKNESS:.1f} mm edge')
-        walls.add(clip['wall'])
-    check(len(walls) >= 3, 'clips spread around the board',
-          f"{len(case.PI_CLIPS)} clips on {sorted(walls)}")
-
-
-def check_vertical_insertion():
-    """Nothing may need a sideways slide: the pocket has no room for one."""
-    section('Straight-down insertion')
-    pi = case.pi_layout()
-    rear_gap = (case.WALL + case.CASE_INNER_WIDTH) - (pi['y'] + case.PI_BOARD_WIDTH)
-    reach = max(min(rect_overlap(
-        clip['hook'],
-        (pi['x'], pi['y'], case.PI_BOARD_LENGTH, case.PI_BOARD_WIDTH)))
-        for clip in case.pi_clip_layout())
-    check(reach <= rear_gap + case.PI_SIDE_CLEARANCE,
-          'no feature needs more slide than the pocket allows',
-          f'deepest grip {reach:.2f} mm, rear gap {rear_gap:.2f} mm — '
-          'the board drops in, it does not slide')
-    for index, clip in enumerate(case.pi_clip_layout(), 1):
-        slices = case.pi_clip_lead_in_slices(clip, 0.0)
-        depths = []
-        for rect, _, _ in slices:
-            depths.append(rect[3] if clip['wall'] in ('front', 'rear')
-                          else rect[2])
-        descending = all(b < a for a, b in zip(depths, depths[1:]))
-        grip = case.PI_CLIP_OVERHANG
-        clears = depths[-1] <= depths[0] - grip + EPS
-        check(descending and clears,
-              f'clip {index} lead-in ramps out of the way',
-              f'{len(depths)} steps, {depths[0]:.2f} down to {depths[-1]:.2f} mm '
-              f'over {case.PI_CLIP_LEAD_IN:.1f} mm of rise, so the top of the '
-              f'ramp is flush with the board edge')
+    for opening in case.pi_io_openings():
+        if opening.get('part') != 'base':
+            continue
+        top = opening['z'] + opening['height']
+        check(top <= case.PARTING_Z + EPS,
+              f"{opening['name']} stays in the base",
+              f'ends at z {top:.2f}, parting plane {case.PARTING_Z:.2f}')
 
 
 def check_snap_strain():
     section('Snap strain (PETG yields near 5 per cent)')
-    arm_length = (case.FLOOR + case.PI_STANDOFF_HEIGHT + case.PI_BOARD_THICKNESS
-                  + case.PI_CLIP_LEAD_IN + 1.2) - case.FLOOR
     for label, thickness, deflection, free_length in (
-        ('PCB clip', case.PI_CLIP_THICKNESS,
-         case.PI_CLIP_OVERHANG, arm_length),
+        ('base snap tab', case.BASE_TAB_THICKNESS,
+         case.BASE_TAB_BUMP, case.BASE_TAB_BUMP_CENTRE),
         ('lid latch', case.LID_RIM_THICKNESS,
          case.LID_LATCH_DEPTH, case.LID_RIM_HEIGHT - case.LID_LATCH_BELOW_TOP),
     ):
@@ -241,42 +243,60 @@ def check_snap_strain():
               f'{strain:.1%} at {deflection:.1f} mm on a '
               f'{free_length:.1f} mm arm')
 
-
-def check_wall_skin():
-    section('Wall left behind the relief slots')
-    outer_w = case.CASE_INNER_WIDTH + 2 * case.WALL
-    for index, clip in enumerate(case.pi_clip_layout(), 1):
-        rx, ry, rl, rw = clip['relief']
-        if clip['wall'] == 'front':
-            skin = ry
-        elif clip['wall'] == 'rear':
-            skin = outer_w - (ry + rw)
-        else:
-            skin = rx
-        check(skin >= MIN_SKIN - EPS, f"clip {index} ({clip['wall']}) outer skin",
-              f'{skin:.2f} mm of solid wall outside the slot')
+    tip = case.BASE_TAB_HEIGHT - case.BASE_TAB_BUMP_CENTRE
+    check(tip >= 0.5, 'bump sits near the tip of the tab',
+          f'{tip:.1f} mm of arm beyond the bump')
 
 
-def check_sma_clear_of_clips():
-    section('SMA hole against the rear clips')
+def check_tabs_can_flex():
+    """A tab bends toward the cavity, which above the parting plane is empty."""
+    section('Room for the tabs to flex')
+    pi = case.pi_layout()
+    board = (pi['x'], pi['y'], case.PI_BOARD_LENGTH, case.PI_BOARD_WIDTH)
+    for index, tab in enumerate(case.base_tab_layout(), 1):
+        dx, dy = rect_overlap(tab['arm'], board)
+        check(min(dx, dy) <= 0, f'tab {index} clears the board footprint',
+              'the arm is in the wall, and above the parting plane the board '
+              'is no longer in the way')
+
+
+def check_sma_and_gps():
+    section('GPS and antenna')
     outer_l = case.CASE_INNER_LENGTH + 2 * case.WALL
     outer_w = case.CASE_INNER_WIDTH + 2 * case.WALL
+    outer_h = case.CASE_INNER_HEIGHT + case.FLOOR
     gps = case.gps_cradle_layout(outer_l, outer_w)
     sma_x = outer_l - gps['sma_center_x']
     half = case.SMA_RECESS_DIAMETER / 2
-    for index, clip in enumerate(case.pi_clip_layout(), 1):
-        if clip['wall'] != 'rear':
+
+    check(case.SMA_HOLE_DIAMETER > case.SMA_THREAD_DIAMETER,
+          'SMA hole clears the threaded section',
+          f"{case.SMA_HOLE_DIAMETER:.1f} mm hole for a "
+          f"{case.SMA_THREAD_DIAMETER:.1f} mm thread, "
+          f"{case.SMA_HOLE_CLEARANCE:.1f} mm all round")
+    check(case.SMA_LOCAL_WALL < case.WALL,
+          'counterbore leaves the antenna room to tighten',
+          f'wall reduced to {case.SMA_LOCAL_WALL:.1f} mm from '
+          f'{case.WALL:.1f} mm around the connector')
+
+    # The SMA hole and the cradle that positions it must stay in one part.
+    check(case.PARTING_Z < outer_h - case.LID_RIM_HEIGHT,
+          'SMA hole is entirely in the shell',
+          f'parting plane at z {case.PARTING_Z:.2f}, the hole sits just under '
+          f'the lid at z {outer_h:.1f}')
+
+    for index, tab in enumerate(case.base_tab_layout(), 1):
+        if tab['wall'] != 'rear':
             continue
-        ax, _, al, _ = clip['arm']
-        gap = -overlap_1d(ax - case.PI_CLIP_POCKET_MARGIN,
-                          ax + al + case.PI_CLIP_POCKET_MARGIN,
+        arm = tab['arm']
+        gap = -overlap_1d(arm[0] - 2.0, arm[0] + arm[2] + 2.0,
                           sma_x - half, sma_x + half)
-        check(gap > 0, f'clip {index} versus the SMA counterbore',
+        check(gap > 0, f'tab {index} versus the SMA counterbore',
               f'{gap:.2f} mm apart along the rear wall')
 
 
 def check_standoffs():
-    section('Standoffs')
+    section('Standoffs and headroom')
     pi = case.pi_layout()
     radius = case.PI_STANDOFF_DIAMETER / 2
     check(radius <= case.PI_MOUNT_EDGE_OFFSET + EPS,
@@ -288,18 +308,25 @@ def check_standoffs():
     headroom = case.FLOOR + case.CASE_INNER_HEIGHT - (top + tallest)
     check(headroom > 0, 'headroom over the tallest connector',
           f'{headroom:.2f} mm under the lid')
+    rim_bottom = case.FLOOR + case.CASE_INNER_HEIGHT - case.LID_RIM_HEIGHT
+    opening_top = max(o['z'] + o['height'] for o in case.pi_io_openings())
+    check(rim_bottom > opening_top,
+          'lid rim clears the tallest opening',
+          f'rim reaches z {rim_bottom:.1f}, openings stop at z '
+          f'{opening_top:.1f}')
 
 
 def main():
     check_board_envelope()
-    check_connectors_clear_the_walls()
-    check_clips_clear_components()
-    check_clips_clear_openings()
-    check_clip_holds_the_board()
-    check_vertical_insertion()
+    check_assembly_is_possible()
+    check_pads_clear_components()
+    check_pads_hold_the_board()
+    check_tabs_clear_components()
+    check_tabs_clear_openings()
+    check_tabs_can_flex()
+    check_tab_wall_left()
     check_snap_strain()
-    check_wall_skin()
-    check_sma_clear_of_clips()
+    check_sma_and_gps()
     check_standoffs()
 
     print('\n'.join(NOTES))
