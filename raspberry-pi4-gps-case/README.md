@@ -1,8 +1,10 @@
 # Raspberry Pi 4 GPS case
 
 Parametric case for a Raspberry Pi 4 Model B and a clip-in u-blox GPS carrier.
-The script generates three separate bodies: case, lid, and a GPS reference
-object used to check the cradle and SMA opening visually in Fusion 360.
+Three printed parts — shell, lid and base plate — plus two reference bodies
+used to check the fit visually in Fusion 360.
+
+Run `python3 fit_check.py` before printing anything.
 
 ## Raspberry Pi 4 fit and I/O
 
@@ -39,6 +41,99 @@ intersect the GPS cradle and its clips are automatically omitted, leaving a
 solid load-bearing region around the removable module while opening most of
 the area above the Raspberry Pi for passive airflow.
 
+## Three parts, split at board level
+
+The box parts on the top face of the PCB. There are three printed pieces:
+
+- **base** — floor, four standoffs, the pocket that locates the board, and the
+  four snap tabs;
+- **shell** — everything above the board: the I/O openings, the pads that hold
+  the board down, the lid seat and the SMA hole;
+- **lid** — vent mesh and the GPS cradle, unchanged.
+
+### Why it has to be split
+
+The Pi 4 is not 85 x 56 mm. That is the PCB. The connectors stand outside that
+outline, and the USB and Ethernet stack stands **2.81 mm** outside it. So the
+board's real envelope is 87.8 x 60 mm.
+
+A box sized to the PCB therefore cannot be assembled at all, whatever holds the
+board down:
+
+- the connectors have to end up inside the wall, 1.8 mm past its inner face;
+- so they have to enter the wall openings;
+- so the openings must be open on the side the board arrives from.
+
+Two revisions were spent designing retention for a board that had no way of
+reaching the pocket. The first slid the board under rear lips that needed
+1.2 mm of travel in a 0.4 mm gap, and put one of them on top of the GPIO
+header. The second replaced them with snap clips, which fixed a real defect and
+changed nothing about the board still not fitting.
+
+Splitting at the top face of the PCB is what makes assembly possible: above
+that plane the board is gone and only its connectors remain, so every opening
+can be open at its bottom edge. The shell comes down over the board and the
+connectors enter from below. Nothing ever passes through material.
+
+This is what `pkoehlers/rpi-case-openscad` does — a Pi 4 case with an external
+antenna, so the same problem — where `topSelector` splits the case "with a
+small lip for the IO". That model's connector table is the same one this file
+uses: same positions, same widths, same heights. Only the `-2.81` overhang and
+the 1.2 mm clearance had not come across, which is precisely what broke.
+
+### Clearance
+
+1.0 mm per side, against 1.2 in the reference model. Slightly less because the
+board here also sits on four standoffs, which centre it. The 0.4 mm it used to
+have was below what FDM resolves across an 85 mm pocket.
+
+### Holding the board
+
+Four rigid pads on the underside of the shell press the PCB onto the
+standoffs. They reach 1.2 mm over the edge and 0.15 mm below the parting
+plane, so the board is clamped rather than free to rattle; the PCB and the
+standoffs absorb the interference.
+
+Nothing snaps over the board any more. The shell traps it.
+
+| pad | wall | offset | what makes that stretch free |
+|---|---|---|---|
+| 1 | front | 61 mm | past the audio jack, which ends at 58.1 mm |
+| 2 | left | 6 mm | front corner, before the microSD opening |
+| 3 | left | 38 mm | behind the microSD opening |
+| 4 | rear | 59 mm | past the GPIO header, which ends at 54.3 mm |
+
+### Holding the shell
+
+Four snap tabs, one per corner, rise from the base wall into slots in the
+shell. The corners are the only stretches of wall that no connector reaches
+from either side, which is why they are all in the same place on every wall.
+The arm is the inner 1.0 mm slice of the base wall carried above the parting
+plane, so it is rooted in thick material, and the bump sits near its tip.
+
+The shell wall is thickened 1.5 mm outward at each tab, so the slot and the
+bump pocket still leave 2.2 mm of wall.
+
+## Checking the fit
+
+```
+python3 fit_check.py
+```
+
+`fit_check.py` imports the script with a stub in place of the Fusion API and
+audits the geometry outside Fusion. It exits non-zero on failure, so it works
+as a pre-commit hook.
+
+It checks board clearance, that the connector envelope really does need
+open-bottomed openings and that it gets them, that the parting plane is the top
+face of the PCB, every pad and tab against every component envelope and every
+wall opening, room for the tabs to flex, wall left behind each bump pocket,
+snap strain, the SMA hole and its counterbore, and the lid rim against the
+tallest opening.
+
+It exists because three separate defects shipped and all three were invisible
+in Fusion: geometry that looks right on screen and cannot be assembled.
+
 ## Snap strain
 
 Both snap features were checked against the standard cantilever formula,
@@ -46,15 +141,17 @@ Both snap features were checked against the standard cantilever formula,
 
 | feature | thickness | deflection | free length | strain |
 |---|---|---|---|---|
-| PCB clip | 1.1 mm | 0.6 mm | 7.0 mm | 2.0 % |
+| base snap tab | 1.0 mm | 0.6 mm | 6.0 mm | 2.5 % |
 | lid latch | 1.2 mm | 0.6 mm | 5.0 mm | 4.3 % |
 
-Two earlier revisions failed this check badly: the clip arm was rooted at
-board level, giving 4 mm of cantilever and 10 per cent strain, and the lid rim
-was 1.6 mm thick with the latch only 2 mm from its root, which works out at
-60 per cent. Both would have snapped off on first assembly. The fix is length,
-not thickness: the clip arm now starts at the floor and the lid latch sits
-near the tip of a taller rim.
+Earlier revisions failed this check badly: a clip arm rooted at board level
+gave 4 mm of cantilever and 10 per cent strain, and a 1.6 mm lid rim with the
+latch 2 mm from its root worked out at 60 per cent. Both would have snapped off
+on first assembly. The fix is length, not thickness. `fit_check.py` re-runs
+this table from the constants.
+
+The tab only has to deflect 0.4 mm in practice, not 0.6: the slot already
+gives it 0.2 mm of clearance before the bump touches anything.
 
 ## Reference bodies
 
@@ -128,11 +225,23 @@ and PETG. Settings that matter for this part:
 | wall generator | Arachne | the clip arm is 1.1 mm and the lid rim 1.2 mm, neither is a multiple of the 0.42 mm line, and the classic generator leaves them hollow |
 | wall loops | 5 | 2.5 mm walls come out solid from perimeters alone |
 | sparse infill | 5 % gyroid | nothing structural relies on infill |
-| bottom shell layers | 5 | the floor carries the four standoffs that take the push when the board snaps in |
+| bottom shell layers | 5 | the base floor carries the four standoffs the board is clamped onto |
 | outer wall speed | 120 mm/s | 200 rounds off the 0.6 mm latch features |
-| fan max | 45 % | PETG layer adhesion at the clip root matters more than surface finish |
-| elephant foot | 0.15 mm | protects the 0.25 mm rim and 0.4 mm board clearances |
-| supports | off | the only overhangs are the 0.6 to 1.6 mm ledges, which print in air |
+| fan max | 45 % | PETG layer adhesion at the root of the snap tabs matters more than surface finish |
+| elephant foot | 0.15 mm | protects the 0.25 mm lid rim clearance |
+| supports | off | see the orientation below: nothing needs them |
+
+### Orientation
+
+| part | on the bed | why |
+|---|---|---|
+| base | floor down | standoffs and snap tabs grow along Z, and the tabs bend across layer lines |
+| shell | parting face down | the press pads land on the first layer and the I/O openings are open at the bed, so nothing bridges |
+| lid | rim up | unchanged |
+
+The 3mf project still carries the old single-piece case. Its process settings
+are still the right ones, but the geometry in it is stale: regenerate the
+bodies from the script before slicing.
 
 Both parts are placed unrotated: the case with its opening up and the lid with
 its rim up, so the clips and the rim grow along Z and bend across layer lines.

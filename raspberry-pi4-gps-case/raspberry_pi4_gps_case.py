@@ -7,30 +7,82 @@ import traceback
 # Raspberry Pi 4 Model B, official mechanical drawing.
 # Datum: PCB corner on the micro-USB-C side of the connector long edge.
 # ---------------------------------------------------------------------------
-# 0.4 mm of side clearance locates the board laterally on its own, so no pegs
-# are needed in the mounting holes.
-PI_SIDE_CLEARANCE = 0.4
+# 1.0 mm per side. pkoehlers/rpi-case-openscad, the closest comparable design
+# (Pi 4 with an external antenna), uses 1.2 mm; this pocket also sits the board
+# on four standoffs, which centres it, so it can afford slightly less.
+# The 0.4 mm it used to carry was below what FDM resolves on an 85 mm pocket.
+PI_SIDE_CLEARANCE = 1.0
 PI_STANDOFF_HEIGHT = 3.0
 PI_STANDOFF_DIAMETER = 5.0
 
-# Screwless PCB retention, tilt-and-snap. Rigid lips on the microSD side take
-# the board edge first, then the opposite side drops past two flexible clips.
-# Pegs in the mounting holes were dropped: they blocked the tilt and forced the
-# board to deflect every clip simultaneously.
-PI_LIP_LENGTH = 14.0
-PI_LIP_OVERHANG = 1.2
-PI_LIP_HEIGHT = 1.4
-# The arm is recessed into the wall with a blind relief slot behind it, so the
-# outside of the case stays flat. It is rooted at the floor rather than at
-# board level: a 7 mm cantilever keeps the bending strain near 2 per cent,
-# where a 4 mm one reached 10 and would crack even in PETG.
-PI_CLIP_THICKNESS = 1.1
-PI_CLIP_LENGTH = 14.0
-PI_CLIP_RELIEF = 0.8
-PI_CLIP_OVERHANG = 0.6
-PI_CLIP_EDGE_GAP = 0.2
-PI_CLIP_LEAD_IN = 1.2
-PI_CLIP_POCKET_MARGIN = 1.0
+# ---------------------------------------------------------------------------
+# Why the case is split in two at board level.
+#
+# The connectors stand outside the PCB outline: 2.81 mm on the USB and
+# Ethernet edge. Whatever the retention, a board whose envelope is wider than
+# its pocket cannot be pushed into a closed box, and openings that are closed
+# above the connectors cannot be entered from inside either. Earlier revisions
+# kept trying to hold a board that had no way of getting there.
+#
+# So the box parts along the top face of the PCB. The base carries the floor,
+# the standoffs and the pocket that locates the board. The shell carries
+# everything above it, and every I/O opening is open at its bottom edge: the
+# shell comes down over the board and the connectors enter their openings from
+# below. Nothing ever has to pass through material.
+#
+# This is what pkoehlers/rpi-case-openscad does (topSelector splits the case
+# with "a small lip for the IO"), and it is why that model can be assembled.
+# ---------------------------------------------------------------------------
+
+# Pads on the underside of the shell that press the board onto the standoffs.
+# They are rigid: nothing has to snap over the board any more, the shell simply
+# traps it. Placement is the same problem as before, so they sit on the four
+# free stretches of board edge, and fit_check.py still verifies every one.
+PI_PAD_REACH = 1.2
+PI_PAD_HEIGHT = 2.5
+# The pads reach this far below the parting plane so the board is clamped
+# rather than rattling between the standoffs and the shell. The PCB and the
+# standoffs absorb it; it is far less than the thickness tolerance of the
+# board itself.
+PI_PAD_PRELOAD = 0.15
+PI_PADS = (
+    ('front', 61.0, 14.0),
+    ('left', 6.0, 12.0),
+    ('left', 38.0, 12.0),
+    ('rear', 59.0, 14.0),
+)
+
+# Snap tabs that hold the shell down on the base. They rise from the base wall
+# into slots in the shell wall and are the only flexing features left.
+# One per corner: the corners are the only stretches of wall that no connector
+# reaches on either side, so they are the same on every wall.
+# Positions are absolute along the wall, because the tabs live in the wall
+# rather than over the board.
+BASE_TAB_THICKNESS = 1.0
+BASE_TAB_HEIGHT = 7.0
+BASE_TAB_CLEARANCE = 0.2
+BASE_TAB_BUMP = 0.6
+BASE_TAB_BUMP_HEIGHT = 2.0
+# Centre of the bump above the parting plane. Keeping it near the tip is what
+# holds the bending strain down; see the table in the README.
+BASE_TAB_BUMP_CENTRE = 6.0
+# The shell wall is thickened outward at each tab so the slot and the bump
+# pocket never thin it below two perimeters.
+BASE_TAB_BOSS = 1.5
+BASE_TABS = (
+    # Short, because the USB-C opening starts 8.4 mm along the front wall.
+    ('front', 2.6, 5.4),
+    ('front', 83.0, 6.0),
+    ('left', 53.5, 6.0),
+    ('rear', 83.0, 6.0),
+)
+# Gap left between the two printed faces so they meet on the wall, not on a
+# high spot.
+PARTING_CLEARANCE = 0.1
+# Features that join to a wall are grown this far into it. A join across two
+# exactly coincident faces is valid but brittle in Fusion: it survives the
+# first rebuild and drops out after an edit.
+JOIN_OVERLAP = 0.5
 
 # ---------------------------------------------------------------------------
 # GPS carrier, user-measured. The component/pin face points into the case, the
@@ -95,9 +147,22 @@ PI_RIGHT_CONNECTORS = (
     ('USB 3 opening', 22.6, 14.7, 15.6),
     ('Ethernet opening', 2.15, 17.9, 13.6),
 )
-# Connector bodies stand this far proud of the PCB edge, and the GPIO header
-# is modelled as a plain 2x20 block. Reference geometry only.
-PI_CONNECTOR_PROUD = 2.0
+# How far the connector bodies stand proud of the PCB edge. These are not
+# reference-only decoration: they set the real envelope of the board, which is
+# what the pocket has to clear.
+#
+# The in-plane table above was taken from pkoehlers/rpi-case-openscad, whose
+# positions, widths and heights match this file exactly. That model places the
+# USB and Ethernet solids at x = -2.81, i.e. 2.81 mm outside the board edge.
+# The overhang did not come across with the rest of the table, and the pocket
+# ended up sized to the bare PCB.
+PI_CONNECTOR_PROUD_RIGHT = 2.81
+# The USB-C, micro-HDMI and audio bodies on the connector long edge stand out
+# less. 2.0 mm is the audio jack, the worst of them, in the saarbastler board
+# model that txoof/pi4_case builds on.
+PI_CONNECTOR_PROUD_FRONT = 2.0
+# Kept as the larger of the two for anything that wants a single figure.
+PI_CONNECTOR_PROUD = max(PI_CONNECTOR_PROUD_RIGHT, PI_CONNECTOR_PROUD_FRONT)
 PI_GPIO_LENGTH = 50.8
 PI_GPIO_WIDTH = 5.1
 PI_GPIO_HEIGHT = 8.5
@@ -122,6 +187,10 @@ FLOOR = 2.5
 CASE_INNER_LENGTH = PI_BOARD_LENGTH + 2 * PI_SIDE_CLEARANCE
 CASE_INNER_WIDTH = PI_BOARD_WIDTH + 2 * PI_SIDE_CLEARANCE
 CASE_INNER_HEIGHT = 29.0
+# The two printed parts meet on the top face of the PCB. Above this plane the
+# board is gone and only its connectors remain, which is exactly what lets the
+# I/O openings be open at the bottom.
+PARTING_Z = FLOOR + PI_STANDOFF_HEIGHT + PI_BOARD_THICKNESS
 LID_THICKNESS = 2.4
 
 # Lid retention. The first print never snapped because the rim was 0.6 mm
@@ -245,9 +314,16 @@ def pi_layout():
 
 
 def pi_io_openings():
-    """Derive all Pi 4 wall apertures from the common assembled board datum."""
+    """Derive all Pi 4 wall apertures from the common assembled board datum.
+
+    Every connector opening starts exactly at the parting plane and is open
+    at its bottom edge. That is the whole point of splitting the box: the
+    shell descends and the connectors, which stand up to 2.81 mm outside the
+    PCB outline, enter their openings from below instead of having to be
+    pushed through solid wall.
+    """
     pi = pi_layout()
-    opening_z = pi['top_z'] - PI_IO_CLEARANCE
+    opening_z = PARTING_Z
     openings = []
 
     for name, source_x, connector_width, connector_height in PI_FRONT_CONNECTORS:
@@ -258,7 +334,8 @@ def pi_io_openings():
             'start': rotated_x - PI_IO_CLEARANCE,
             'span': connector_width + 2 * PI_IO_CLEARANCE,
             'z': opening_z,
-            'height': connector_height + 2 * PI_IO_CLEARANCE,
+            'height': connector_height + PI_IO_CLEARANCE,
+            'open_bottom': True,
         })
 
     for name, source_y, connector_width, connector_height in PI_RIGHT_CONNECTORS:
@@ -269,22 +346,73 @@ def pi_io_openings():
             'start': rotated_y - PI_IO_CLEARANCE,
             'span': connector_width + 2 * PI_IO_CLEARANCE,
             'z': opening_z,
-            'height': connector_height + 2 * PI_IO_CLEARANCE,
+            'height': connector_height + PI_IO_CLEARANCE,
+            'open_bottom': True,
         })
 
     microsd_center_y = (
         pi['y'] + PI_BOARD_WIDTH
         - PI_MICROSD_Y - PI_MICROSD_WIDTH / 2
     )
+    # The card sits under the board, so its slot belongs to the base and runs
+    # up to the parting plane. Open at the top, which also means no bridging.
+    microsd_z = pi['bottom_z'] - FLOOR
     openings.append({
         'name': 'MicroSD opening',
         'wall': 'left',
         'start': microsd_center_y - PI_MICROSD_ACCESS_WIDTH / 2,
         'span': PI_MICROSD_ACCESS_WIDTH,
-        'z': pi['bottom_z'] - FLOOR,
-        'height': PI_MICROSD_OPENING_HEIGHT,
+        'z': microsd_z,
+        'height': PARTING_Z - microsd_z,
+        'open_bottom': False,
+        'part': 'base',
     })
+    for opening in openings:
+        opening.setdefault('part', 'shell')
     return openings
+
+
+def pi_component_footprints():
+    """Return every Pi 4 component that stands above the PCB.
+
+    One source of truth for two consumers: body 4 draws these, and
+    fit_check.py tests the retention clips against them. The rear lip that
+    broke assembly landed on the GPIO header precisely because the clip
+    placement and the reference body were worked out separately.
+
+    Each entry is (name, rect, height) with rect as (x, y, length, width) and
+    height measured from the top face of the PCB.
+    """
+    pi = pi_layout()
+    parts = []
+
+    for name, source_x, width, height in PI_FRONT_CONNECTORS:
+        x = pi['x'] + PI_BOARD_LENGTH - source_x - width
+        parts.append((
+            name.replace(' opening', ''),
+            (x, pi['y'] - PI_CONNECTOR_PROUD_FRONT,
+             width, PI_CONNECTOR_PROUD_FRONT + width / 3),
+            height,
+        ))
+
+    for name, source_y, width, height in PI_RIGHT_CONNECTORS:
+        y = pi['y'] + PI_BOARD_WIDTH - source_y - width
+        depth = 21.0 if 'USB' in name else 21.3
+        parts.append((
+            name.replace(' opening', ''),
+            (pi['x'] + PI_BOARD_LENGTH + PI_CONNECTOR_PROUD_RIGHT - depth, y,
+             depth, width),
+            height,
+        ))
+
+    parts.append((
+        'GPIO header',
+        (pi['x'] + PI_GPIO_FIRST_PIN,
+         pi['y'] + PI_BOARD_WIDTH - PI_GPIO_EDGE_OFFSET - PI_GPIO_WIDTH / 2,
+         PI_GPIO_LENGTH, PI_GPIO_WIDTH),
+        PI_GPIO_HEIGHT,
+    ))
+    return parts
 
 
 def rectangles_overlap(first, second):
@@ -346,86 +474,105 @@ def rear_wall_hole(comp, target_body, name, center_x, center_z, wall_y,
     return feature
 
 
-def pi_retention(comp):
-    """Screwless retention, tilt-and-snap, placed clear of every connector.
+def pi_pad_layout(x_offset=0):
+    """Return the shell pads that press the board onto its standoffs.
 
-    Assembly: slide the GPIO edge of the board under the two rigid lips on the
-    rear wall, then press the front edge down until the two clips snap over it.
-    Removal: push the clips outward and lift the front edge.
-
-    Placement is forced by the I/O: the right wall is full of USB and Ethernet,
-    the left wall carries the microSD slot, and the front wall only has a free
-    stretch beyond the audio jack. The rear GPIO wall is the one clear side, so
-    it takes the fixed lips.
-
-    Nothing sits in the mounting holes: pegs would block the tilt and force
-    every clip to deflect at once.
+    Each pad is (name, rect, z, height) with rect as (x, y, length, width).
+    A pad spans the clearance gap and reaches PI_PAD_REACH over the PCB edge,
+    on a stretch of edge that carries no connector.
     """
     pi = pi_layout()
-    holes = [
-        (pi['mount_x'], pi['mount_y']),
-        (pi['mount_x'] + PI_MOUNT_X, pi['mount_y']),
-        (pi['mount_x'], pi['mount_y'] + PI_MOUNT_Y),
-        (pi['mount_x'] + PI_MOUNT_X, pi['mount_y'] + PI_MOUNT_Y),
-    ]
-    for index, (x, y) in enumerate(holes, 1):
-        cylinder_feature(comp, f'Pi standoff {index}', x, y, FLOOR,
-                         PI_STANDOFF_DIAMETER, PI_STANDOFF_HEIGHT)
-
-    board_top = pi['bottom_z'] + PI_BOARD_THICKNESS
-    board_rear_y = pi['y'] + PI_BOARD_WIDTH
-    rear_wall_inner = WALL + CASE_INNER_WIDTH
-
-    # Fixed lips on the rear GPIO wall. They never flex: the board slides in
-    # underneath them, so they need no relief slot.
-    for name, x in (('left', pi['x'] + 12.0),
-                    ('right', pi['x'] + PI_BOARD_LENGTH - 12.0 - PI_LIP_LENGTH)):
-        rectangle_feature(
-            comp, f'Pi retaining lip {name}', x,
-            board_rear_y - PI_LIP_OVERHANG, board_top,
-            PI_LIP_LENGTH, PI_LIP_OVERHANG + PI_SIDE_CLEARANCE, PI_LIP_HEIGHT,
-            adsk.fusion.FeatureOperations.JoinFeatureOperation)
-
-    # Flexible clips. Placement is dictated by the free wall stretches: the
-    # front wall is clear only past the audio jack, and the left wall is clear
-    # between the front corner and the microSD slot. One clip on each holds
-    # both front corners down. The wall is locally thickened outward so the
-    # relief slot never thins it.
-    # Rooted on the floor so the cantilever is long enough to bend safely.
-    arm_height = (pi['bottom_z'] - FLOOR + PI_BOARD_THICKNESS
-                  + PI_CLIP_LEAD_IN + 1.2)
-    front_arm_y = pi['y'] - PI_CLIP_EDGE_GAP - PI_CLIP_THICKNESS
-    left_arm_x = pi['x'] - PI_CLIP_EDGE_GAP - PI_CLIP_THICKNESS
-    clips = (
-        ('front', pi['x'] + PI_BOARD_LENGTH - 10.0 - PI_CLIP_LENGTH),
-        ('left', pi['y'] + 3.0),
-    )
-    for wall, start in clips:
-        margin = PI_CLIP_POCKET_MARGIN
+    pads = []
+    for wall, offset, length in PI_PADS:
+        reach = PI_SIDE_CLEARANCE + PI_PAD_REACH + JOIN_OVERLAP
         if wall == 'front':
-            relief = (start - margin, front_arm_y - PI_CLIP_RELIEF,
-                      PI_CLIP_LENGTH + 2 * margin, PI_CLIP_RELIEF)
-            arm = (start, front_arm_y, PI_CLIP_LENGTH, PI_CLIP_THICKNESS)
-            hook = (start, front_arm_y + PI_CLIP_THICKNESS,
-                    PI_CLIP_LENGTH, PI_CLIP_OVERHANG + PI_CLIP_EDGE_GAP)
+            rect = (x_offset + pi['x'] + offset, WALL - JOIN_OVERLAP,
+                    length, reach)
+        elif wall == 'rear':
+            rect = (x_offset + pi['x'] + offset,
+                    pi['y'] + PI_BOARD_WIDTH - PI_PAD_REACH, length, reach)
         else:
-            relief = (left_arm_x - PI_CLIP_RELIEF, start - margin,
-                      PI_CLIP_RELIEF, PI_CLIP_LENGTH + 2 * margin)
-            arm = (left_arm_x, start, PI_CLIP_THICKNESS, PI_CLIP_LENGTH)
-            hook = (left_arm_x + PI_CLIP_THICKNESS, start,
-                    PI_CLIP_OVERHANG + PI_CLIP_EDGE_GAP, PI_CLIP_LENGTH)
-        rectangle_feature(
-            comp, f'Pi clip relief {wall}', relief[0], relief[1],
-            FLOOR, relief[2], relief[3], arm_height + PI_CLIP_LEAD_IN,
-            adsk.fusion.FeatureOperations.CutFeatureOperation)
-        rectangle_feature(
-            comp, f'Pi clip arm {wall}', arm[0], arm[1], FLOOR,
-            arm[2], arm[3], arm_height,
-            adsk.fusion.FeatureOperations.JoinFeatureOperation)
-        rectangle_feature(
-            comp, f'Pi clip hook {wall}', hook[0], hook[1], board_top,
-            hook[2], hook[3], PI_CLIP_LEAD_IN,
-            adsk.fusion.FeatureOperations.JoinFeatureOperation)
+            rect = (x_offset + WALL - JOIN_OVERLAP, pi['y'] + offset,
+                    reach, length)
+        pads.append((
+            f'Board press pad {wall} {offset:.0f}',
+            rect,
+            PARTING_Z - PI_PAD_PRELOAD,
+            PI_PAD_HEIGHT + PI_PAD_PRELOAD,
+        ))
+    return pads
+
+
+def base_tab_layout(x_offset=0):
+    """Return the snap tabs that hold the shell down on the base.
+
+    Each entry gives the tab arm, its bump, and the slot and bump pocket the
+    shell needs, all as (x, y, length, width) rectangles. The tab is the inner
+    slice of the base wall continued above the parting plane, so it is rooted
+    in thick material and bends over its whole free length.
+    """
+    slot_depth = BASE_TAB_THICKNESS + BASE_TAB_CLEARANCE
+    outer_w = CASE_INNER_WIDTH + 2 * WALL
+    outer_l = CASE_INNER_LENGTH + 2 * WALL
+    tabs = []
+    for wall, start, length in BASE_TABS:
+        if wall in ('front', 'rear'):
+            arm_l, arm_w = length, BASE_TAB_THICKNESS
+            if wall == 'front':
+                arm_y = WALL - BASE_TAB_THICKNESS
+                slot_y, bump_y = WALL - slot_depth, WALL - slot_depth - BASE_TAB_BUMP
+                bump_face_y = arm_y - BASE_TAB_BUMP
+            else:
+                arm_y = outer_w - WALL
+                slot_y, bump_y = outer_w - WALL, outer_w - WALL + slot_depth
+                bump_face_y = arm_y + BASE_TAB_THICKNESS - JOIN_OVERLAP
+            arm = (x_offset + start, arm_y, arm_l, arm_w)
+            bump = (x_offset + start, bump_face_y,
+                    arm_l, BASE_TAB_BUMP + JOIN_OVERLAP)
+            slot = (x_offset + start - BASE_TAB_CLEARANCE, slot_y,
+                    arm_l + 2 * BASE_TAB_CLEARANCE, slot_depth)
+            pocket = (x_offset + start - BASE_TAB_CLEARANCE, bump_y,
+                      arm_l + 2 * BASE_TAB_CLEARANCE, BASE_TAB_BUMP)
+            boss = (x_offset + start - 2.0,
+                    -BASE_TAB_BOSS if wall == 'front'
+                    else outer_w - JOIN_OVERLAP,
+                    arm_l + 4.0, BASE_TAB_BOSS + JOIN_OVERLAP)
+        else:
+            arm_l, arm_w = BASE_TAB_THICKNESS, length
+            arm_x = WALL - BASE_TAB_THICKNESS
+            arm = (x_offset + arm_x, start, arm_l, arm_w)
+            bump = (x_offset + arm_x - BASE_TAB_BUMP, start,
+                    BASE_TAB_BUMP + JOIN_OVERLAP, arm_w)
+            slot = (x_offset + WALL - slot_depth, start - BASE_TAB_CLEARANCE,
+                    slot_depth, arm_w + 2 * BASE_TAB_CLEARANCE)
+            pocket = (x_offset + WALL - slot_depth - BASE_TAB_BUMP,
+                      start - BASE_TAB_CLEARANCE, BASE_TAB_BUMP,
+                      arm_w + 2 * BASE_TAB_CLEARANCE)
+            boss = (x_offset - BASE_TAB_BOSS, start - 2.0,
+                    BASE_TAB_BOSS + JOIN_OVERLAP, arm_w + 4.0)
+        tabs.append({
+            'wall': wall,
+            'start': start,
+            'length': length,
+            'arm': arm,
+            'bump': bump,
+            'slot': slot,
+            'pocket': pocket,
+            'boss': boss,
+        })
+    return tabs
+
+
+def tab_bump_z():
+    """Z extent of a tab bump and of the pocket that receives it."""
+    bump_z = PARTING_Z + BASE_TAB_BUMP_CENTRE - BASE_TAB_BUMP_HEIGHT / 2
+    return {
+        'bump_z': bump_z,
+        'bump_height': BASE_TAB_BUMP_HEIGHT,
+        'pocket_z': bump_z - BASE_TAB_CLEARANCE,
+        'pocket_height': BASE_TAB_BUMP_HEIGHT + 2 * BASE_TAB_CLEARANCE,
+        'slot_height': BASE_TAB_HEIGHT + 1.0,
+    }
 
 
 def lid_latch_positions(x_offset=0):
@@ -477,51 +624,164 @@ def gps_sma_wall_features(comp, target_body, outer_l, outer_w, outer_h):
     )
 
 
-def body_shell(comp):
+def cut_opening(comp, target_body, opening, x_offset, z_floor, z_ceiling):
+    """Cut one wall aperture into a part, clipped to that part's z range.
+
+    An opening flagged open_bottom starts at the parting plane, which is the
+    bottom face of the shell, so it is cut as a notch that reaches below the
+    part and leaves nothing under the connector.
+    """
+    outer_l = CASE_INNER_LENGTH + 2 * WALL
+    outer_w = CASE_INNER_WIDTH + 2 * WALL
+    z_start = opening['z']
+    z_end = z_start + opening['height']
+    if opening.get('open_bottom'):
+        z_start -= 1.0
+    z_start = max(z_start, z_floor - 1.0)
+    z_end = min(z_end, z_ceiling + 1.0)
+    if z_end <= z_start:
+        return
+    height = z_end - z_start
+
+    if opening['wall'] == 'front':
+        rect = (x_offset + opening['start'], -1.0, opening['span'], WALL + 2.0)
+    elif opening['wall'] == 'right':
+        rect = (x_offset + outer_l - WALL - 1.0, opening['start'],
+                WALL + 2.0, opening['span'])
+    elif opening['wall'] == 'rear':
+        rect = (x_offset + opening['start'], outer_w - WALL - 1.0,
+                opening['span'], WALL + 2.0)
+    else:
+        rect = (x_offset - 1.0, opening['start'], WALL + 2.0, opening['span'])
+
+    rectangle_feature(
+        comp, opening['name'], rect[0], rect[1], z_start,
+        rect[2], rect[3], height,
+        adsk.fusion.FeatureOperations.CutFeatureOperation,
+        [target_body],
+    )
+
+
+def base_plate(comp, x_offset=0):
+    """Bottom part: floor, standoffs, the pocket that locates the board, and
+    the four snap tabs that the shell latches onto.
+
+    Its wall stops at the parting plane, which is the top face of the PCB, so
+    no connector ever meets it.
+    """
+    outer_l = CASE_INNER_LENGTH + 2 * WALL
+    outer_w = CASE_INNER_WIDTH + 2 * WALL
+
+    base_feature = rectangle_feature(
+        comp, 'Base outer body', x_offset, 0, 0, outer_l, outer_w, PARTING_Z)
+    base_body = base_feature.bodies.item(0)
+    rectangle_feature(
+        comp, 'Base pocket', x_offset + WALL, WALL, FLOOR,
+        CASE_INNER_LENGTH, CASE_INNER_WIDTH, PARTING_Z - FLOOR + 1.0,
+        adsk.fusion.FeatureOperations.CutFeatureOperation,
+        [base_body],
+    )
+
+    pi = pi_layout()
+    holes = [
+        (pi['mount_x'], pi['mount_y']),
+        (pi['mount_x'] + PI_MOUNT_X, pi['mount_y']),
+        (pi['mount_x'], pi['mount_y'] + PI_MOUNT_Y),
+        (pi['mount_x'] + PI_MOUNT_X, pi['mount_y'] + PI_MOUNT_Y),
+    ]
+    for index, (x, y) in enumerate(holes, 1):
+        cylinder_feature(comp, f'Pi standoff {index}', x_offset + x, y, FLOOR,
+                         PI_STANDOFF_DIAMETER, PI_STANDOFF_HEIGHT)
+
+    for opening in pi_io_openings():
+        if opening.get('part') != 'base':
+            continue
+        cut_opening(comp, base_body, opening, x_offset, FLOOR, PARTING_Z)
+
+    # Snap tabs. The arm is the inner slice of the wall carried above the
+    # parting plane; the bump near its tip engages a pocket in the shell.
+    z = tab_bump_z()
+    for index, tab in enumerate(base_tab_layout(x_offset), 1):
+        arm = tab['arm']
+        rectangle_feature(
+            comp, f"Base snap tab {index} {tab['wall']}",
+            arm[0], arm[1], PARTING_Z - JOIN_OVERLAP, arm[2], arm[3],
+            BASE_TAB_HEIGHT + JOIN_OVERLAP,
+            adsk.fusion.FeatureOperations.JoinFeatureOperation)
+        bump = tab['bump']
+        rectangle_feature(
+            comp, f"Base snap tab {index} bump",
+            bump[0], bump[1], z['bump_z'], bump[2], bump[3], z['bump_height'],
+            adsk.fusion.FeatureOperations.JoinFeatureOperation)
+    return base_body
+
+
+def shell(comp, x_offset=0):
+    """Top part: everything above the top face of the PCB.
+
+    Carries the I/O openings, which are open at the bottom so the connectors
+    enter from below, the pads that press the board down, the slots for the
+    base tabs, the lid seat and the SMA hole.
+    """
     outer_l = CASE_INNER_LENGTH + 2 * WALL
     outer_w = CASE_INNER_WIDTH + 2 * WALL
     outer_h = CASE_INNER_HEIGHT + FLOOR
+    shell_height = outer_h - PARTING_Z
 
     outer_feature = rectangle_feature(
-        comp, 'Case outer body', 0, 0, 0, outer_l, outer_w, outer_h)
-    case_body = outer_feature.bodies.item(0)
+        comp, 'Shell outer body', x_offset, 0, PARTING_Z,
+        outer_l, outer_w, shell_height)
+    shell_body = outer_feature.bodies.item(0)
+
+    # Local outward thickening at each tab, so the slot and the bump pocket
+    # never take the wall below two perimeters.
+    for index, tab in enumerate(base_tab_layout(x_offset), 1):
+        boss = tab['boss']
+        rectangle_feature(
+            comp, f'Shell tab boss {index}', boss[0], boss[1], PARTING_Z,
+            boss[2], boss[3], tab_bump_z()['slot_height'] + 2.0,
+            adsk.fusion.FeatureOperations.JoinFeatureOperation)
+
     rectangle_feature(
-        comp, 'Case cavity', WALL, WALL, FLOOR,
-        CASE_INNER_LENGTH, CASE_INNER_WIDTH, CASE_INNER_HEIGHT + 1,
-        adsk.fusion.FeatureOperations.CutFeatureOperation
+        comp, 'Shell cavity', x_offset + WALL, WALL, PARTING_Z,
+        CASE_INNER_LENGTH, CASE_INNER_WIDTH, shell_height + 1.0,
+        adsk.fusion.FeatureOperations.CutFeatureOperation,
+        [shell_body],
     )
 
-    # Pi 4 mounting posts: official 58 x 49 mm pattern, with print clearance.
-    pi_retention(comp)
+    # Slots and bump pockets for the base tabs.
+    z = tab_bump_z()
+    for index, tab in enumerate(base_tab_layout(x_offset), 1):
+        slot = tab['slot']
+        rectangle_feature(
+            comp, f'Shell tab slot {index}', slot[0], slot[1],
+            PARTING_Z - 1.0, slot[2], slot[3], z['slot_height'] + 1.0,
+            adsk.fusion.FeatureOperations.CutFeatureOperation,
+            [shell_body],
+        )
+        pocket = tab['pocket']
+        rectangle_feature(
+            comp, f'Shell tab pocket {index}', pocket[0], pocket[1],
+            z['pocket_z'], pocket[2], pocket[3], z['pocket_height'],
+            adsk.fusion.FeatureOperations.CutFeatureOperation,
+            [shell_body],
+        )
 
-    # Derive every wall opening from the same assembled Pi board datum.
+    # Pads that trap the board against the standoffs.
+    for name, rect, pad_z, pad_height in pi_pad_layout(x_offset):
+        rectangle_feature(
+            comp, name, rect[0], rect[1], pad_z, rect[2], rect[3], pad_height,
+            adsk.fusion.FeatureOperations.JoinFeatureOperation)
+
+    # Every connector opening, open at the bottom edge of this part.
     for opening in pi_io_openings():
-        if opening['wall'] == 'front':
-            rectangle_feature(
-                comp, opening['name'], opening['start'], -1.0, opening['z'],
-                opening['span'], WALL + 2.0, opening['height'],
-                adsk.fusion.FeatureOperations.CutFeatureOperation,
-                [case_body],
-            )
-        elif opening['wall'] == 'right':
-            rectangle_feature(
-                comp, opening['name'], outer_l - WALL - 1.0,
-                opening['start'], opening['z'], WALL + 2.0,
-                opening['span'], opening['height'],
-                adsk.fusion.FeatureOperations.CutFeatureOperation,
-                [case_body],
-            )
-        else:
-            rectangle_feature(
-                comp, opening['name'], -1.0, opening['start'], opening['z'],
-                WALL + 2.0, opening['span'], opening['height'],
-                adsk.fusion.FeatureOperations.CutFeatureOperation,
-                [case_body],
-            )
+        if opening.get('part') != 'shell':
+            continue
+        cut_opening(comp, shell_body, opening, x_offset, PARTING_Z, outer_h)
 
     # Latch pockets for the lid rim bumps. Without these the bumps would jam
     # against the wall and the lid could not close at all.
-    latches = lid_latch_positions()
+    latches = lid_latch_positions(x_offset)
     for x in latches['x_positions']:
         rectangle_feature(
             comp, 'Lid latch pocket front', x, WALL - LID_LATCH_DEPTH,
@@ -537,7 +797,8 @@ def body_shell(comp):
     # Round rear-wall hole aligned with the assembled SMA axis. A shallow
     # circular counterbore leaves 2 mm of local wall so an antenna that stops
     # 3 mm from the SMA base can still tighten completely.
-    gps_sma_wall_features(comp, case_body, outer_l, outer_w, outer_h)
+    gps_sma_wall_features(comp, shell_body, outer_l, outer_w, outer_h)
+    return shell_body
 
 
 def lid(comp, x_offset=0):
@@ -791,13 +1052,17 @@ def run(context):
             return
 
         root = design.rootComponent
-        body_shell(root)
+        # The shell must stay at the origin: the SMA hole is derived from the
+        # unshifted cradle layout.
+        shell(root)
         lid(root, 110.0)
         gps_reference(root, 110.0)
+        base_plate(root, 230.0)
         pi_reference(root)
         app.activeViewport.fit()
-        ui.messageBox('Case generated. Body 3 is the removable GPS reference, '
-                      'body 4 is the removable Raspberry Pi 4 reference. '
+        ui.messageBox('Case generated. Three printed parts: shell, lid and '
+                      'base plate. Body 4 is the removable GPS reference and '
+                      'body 5 the removable Raspberry Pi 4 reference. '
                       'Hide or delete either one to inspect the case.')
     except Exception:
         if ui:
