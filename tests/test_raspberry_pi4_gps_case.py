@@ -353,7 +353,62 @@ class ScrewlessRetentionTest(unittest.TestCase):
         for hook in hooks:
             self.assertAlmostEqual(
                 hook[3], layout['bottom_z'] + module.PI_BOARD_THICKNESS)
-            self.assertEqual(hook[4], module.PI_CLIP_OVERHANG)
+            # The hook spans the edge gap plus the overlap on the board.
+            self.assertEqual(
+                hook[4], module.PI_CLIP_OVERHANG + module.PI_CLIP_EDGE_GAP)
+
+    def test_clips_actually_grip_the_board_and_can_flex(self):
+        """The first attempt had hooks tangent to the PCB edge and arms buried
+        in the wall, so nothing retained the board and nothing could bend."""
+        rectangles = []
+
+        def capture(comp, name, x, y, z, length, width, height,
+                    operation='new-body', participant_bodies=None):
+            rectangles.append({
+                'name': name, 'x': x, 'y': y, 'z': z,
+                'length': length, 'width': width, 'height': height,
+                'operation': operation,
+            })
+
+        with mock.patch.object(module, 'cylinder_feature'), \
+                mock.patch.object(module, 'rectangle_feature', side_effect=capture):
+            module.pi_retention(None)
+
+        layout = module.pi_layout()
+        board_start = layout['x']
+        board_end = board_start + module.PI_BOARD_LENGTH
+        outer_l = module.CASE_INNER_LENGTH + 2 * module.WALL
+
+        hooks = [r for r in rectangles if 'clip hook' in r['name']]
+        self.assertEqual(len(hooks), 4)
+        for hook in hooks:
+            overlap = (min(hook['x'] + hook['length'], board_end)
+                       - max(hook['x'], board_start))
+            self.assertAlmostEqual(overlap, module.PI_CLIP_OVERHANG)
+            self.assertGreater(overlap, 0.0)
+
+        # The arm can only bend by the width of its relief slot.
+        self.assertGreater(module.PI_CLIP_RELIEF, module.PI_CLIP_OVERHANG)
+
+        reliefs = [r for r in rectangles if 'clip relief' in r['name']]
+        self.assertEqual(len(reliefs), 4)
+        for relief in reliefs:
+            self.assertEqual(relief['operation'],
+                             module.adsk.fusion.FeatureOperations.CutFeatureOperation)
+            # A blind slot: it must never reach either outer face.
+            self.assertGreater(relief['x'], 0.0)
+            self.assertLess(relief['x'] + relief['length'], outer_l)
+
+        arms = [r for r in rectangles if 'clip arm' in r['name']]
+        self.assertEqual(len(arms), 4)
+        for arm in arms:
+            # Free on the board side, relieved on the wall side.
+            self.assertGreater(arm['x'], 0.0)
+            self.assertLess(arm['x'] + arm['length'], outer_l)
+
+    def test_pegs_limit_lateral_play(self):
+        play = (module.PI_MOUNT_HOLE_DIAMETER - module.PI_PEG_DIAMETER) / 2
+        self.assertLessEqual(play, 0.2)
 
     def test_every_opening_stays_inside_the_board_footprint(self):
         layout = module.pi_layout()

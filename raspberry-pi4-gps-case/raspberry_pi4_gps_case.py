@@ -12,12 +12,17 @@ PI_STANDOFF_HEIGHT = 3.0
 PI_STANDOFF_DIAMETER = 5.0
 PI_PEG_HEIGHT = 1.6
 
-# Screwless PCB retention. Values follow the measured reference case:
-# 2.2 mm arms, 12 mm long, 1.0 mm of latch interference.
-PI_CLIP_THICKNESS = 2.2
+# Screwless PCB retention. The arm needs free space on both faces or it cannot
+# flex, so a shallow pocket is cut into the wall behind each clip. The hook can
+# only overhang the board by less than the relief gap, otherwise the arm would
+# have to bend further than the slot allows.
+PI_CLIP_THICKNESS = 1.4
 PI_CLIP_LENGTH = 12.0
-PI_CLIP_OVERHANG = 1.0
+PI_CLIP_RELIEF = 0.8
+PI_CLIP_OVERHANG = 0.6
+PI_CLIP_EDGE_GAP = 0.2
 PI_CLIP_LEAD_IN = 1.0
+PI_CLIP_POCKET_MARGIN = 1.0
 
 # ---------------------------------------------------------------------------
 # GPS carrier, user-measured. The component/pin face points into the case, the
@@ -341,24 +346,45 @@ def pi_retention(comp):
                          pi['bottom_z'], PI_PEG_DIAMETER, PI_PEG_HEIGHT)
 
     clip_z = pi['bottom_z']
-    arm_height = PI_BOARD_THICKNESS + PI_CLIP_LEAD_IN + 1.2
-    left_x = pi['x'] - PI_SIDE_CLEARANCE - PI_CLIP_THICKNESS
-    right_x = pi['x'] + PI_BOARD_LENGTH + PI_SIDE_CLEARANCE
-    clip_positions = (
-        ('front left', left_x, pi['y'] + 14.0),
-        ('rear left', left_x, pi['y'] + PI_BOARD_WIDTH - 14.0 - PI_CLIP_LENGTH),
-        ('front right', right_x, pi['y'] + 14.0),
-        ('rear right', right_x, pi['y'] + PI_BOARD_WIDTH - 14.0 - PI_CLIP_LENGTH),
+    board_top = clip_z + PI_BOARD_THICKNESS
+    arm_height = board_top - clip_z + PI_CLIP_LEAD_IN + 1.2
+    outer_l = CASE_INNER_LENGTH + 2 * WALL
+
+    # Arm faces, measured from each PCB edge outward.
+    left_inner = pi['x'] - PI_CLIP_EDGE_GAP
+    left_outer = left_inner - PI_CLIP_THICKNESS
+    right_inner = pi['x'] + PI_BOARD_LENGTH + PI_CLIP_EDGE_GAP
+    right_outer = right_inner + PI_CLIP_THICKNESS
+
+    front_y = pi['y'] + 12.0
+    rear_y = pi['y'] + PI_BOARD_WIDTH - 12.0 - PI_CLIP_LENGTH
+    clips = (
+        ('front left', left_outer, front_y, True),
+        ('rear left', left_outer, rear_y, True),
+        ('front right', right_inner, front_y, False),
+        ('rear right', right_inner, rear_y, False),
     )
-    for name, x, y in clip_positions:
+    for name, arm_x, y, is_left in clips:
+        # Blind relief slot behind the arm. It must not reach the outer face,
+        # otherwise the pocket becomes a through slot in the wall.
+        cut_x = (arm_x - PI_CLIP_RELIEF if is_left
+                 else arm_x + PI_CLIP_THICKNESS)
+        cut_length = PI_CLIP_RELIEF
         rectangle_feature(
-            comp, f'Pi clip arm {name}', x, y, clip_z,
+            comp, f'Pi clip relief {name}', cut_x,
+            y - PI_CLIP_POCKET_MARGIN, clip_z, cut_length,
+            PI_CLIP_LENGTH + 2 * PI_CLIP_POCKET_MARGIN,
+            arm_height + PI_CLIP_LEAD_IN,
+            adsk.fusion.FeatureOperations.CutFeatureOperation)
+        rectangle_feature(
+            comp, f'Pi clip arm {name}', arm_x, y, clip_z,
             PI_CLIP_THICKNESS, PI_CLIP_LENGTH, arm_height,
             adsk.fusion.FeatureOperations.JoinFeatureOperation)
-        hook_x = x + PI_CLIP_THICKNESS if x < pi['x'] else x - PI_CLIP_OVERHANG
+        hook_x = (arm_x + PI_CLIP_THICKNESS if is_left
+                  else arm_x - PI_CLIP_OVERHANG - PI_CLIP_EDGE_GAP)
         rectangle_feature(
-            comp, f'Pi clip hook {name}', hook_x, y,
-            clip_z + PI_BOARD_THICKNESS, PI_CLIP_OVERHANG, PI_CLIP_LENGTH,
+            comp, f'Pi clip hook {name}', hook_x, y, board_top,
+            PI_CLIP_OVERHANG + PI_CLIP_EDGE_GAP, PI_CLIP_LENGTH,
             PI_CLIP_LEAD_IN,
             adsk.fusion.FeatureOperations.JoinFeatureOperation)
 
