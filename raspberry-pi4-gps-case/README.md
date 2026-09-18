@@ -117,6 +117,23 @@ outside of this case is flat, and growing a boss to make room for the joint
 was the wrong way round. That is what sets the arm at 0.8 mm rather than 1.0,
 which also drops the bending strain to 2.0 per cent.
 
+## Test print before the real one
+
+```python
+# in run(), instead of shell/lid/gps_reference:
+test_print(root)
+```
+
+`test_print()` emits the base plus a shell truncated to 17.4 mm. That covers
+the pocket, the four standoffs, all four snap tabs, all four press pads and
+every connector opening — everything that decides whether the board goes in.
+It leaves out only the lid seat and the SMA hole, which an earlier print
+already proved.
+
+Printing the base on its own is not worth much: the snap tabs have no
+counterpart without the shell, and the pads and the openings are all in the
+shell. The base alone only checks the pocket and the standoffs.
+
 ## Checking the fit
 
 ```

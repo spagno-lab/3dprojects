@@ -711,17 +711,23 @@ def base_plate(comp, x_offset=0):
     return base_body
 
 
-def shell(comp, x_offset=0):
+def shell(comp, x_offset=0, height_limit=None):
     """Top part: everything above the top face of the PCB.
 
     Carries the I/O openings, which are open at the bottom so the connectors
     enter from below, the pads that press the board down, the slots for the
     base tabs, the lid seat and the SMA hole.
+
+    height_limit truncates the part for a test print. Everything that decides
+    whether the board fits lives in the bottom 16.4 mm; the lid seat and the
+    SMA hole above it are geometry that a previous print already proved.
     """
     outer_l = CASE_INNER_LENGTH + 2 * WALL
     outer_w = CASE_INNER_WIDTH + 2 * WALL
     outer_h = CASE_INNER_HEIGHT + FLOOR
-    shell_height = outer_h - PARTING_Z
+    full_height = outer_h - PARTING_Z
+    shell_height = full_height if height_limit is None else height_limit
+    truncated = height_limit is not None
 
     outer_feature = rectangle_feature(
         comp, 'Shell outer body', x_offset, 0, PARTING_Z,
@@ -764,6 +770,9 @@ def shell(comp, x_offset=0):
         if opening.get('part') != 'shell':
             continue
         cut_opening(comp, shell_body, opening, x_offset, PARTING_Z, outer_h)
+
+    if truncated:
+        return shell_body
 
     # Latch pockets for the lid rim bumps. Without these the bumps would jam
     # against the wall and the lid could not close at all.
@@ -1025,6 +1034,26 @@ def pi_reference(comp):
         adsk.fusion.FeatureOperations.JoinFeatureOperation,
         [pi_body],
     )
+
+
+def test_collar_height():
+    """Shell height a test print needs to cover every opening and every tab."""
+    opening_top = max(o['z'] + o['height'] for o in pi_io_openings())
+    tab_top = PARTING_Z + tab_bump_z()['slot_height']
+    return max(opening_top, tab_top) - PARTING_Z + 1.0
+
+
+def test_print(root):
+    """Base plus a truncated shell: the cheap way to find out whether the
+    board actually goes in, before committing to the full part.
+
+    Call this from run() instead of the real parts. It exercises the pocket,
+    the standoffs, all four snap tabs, all four press pads and every connector
+    opening, and leaves out only the lid seat and the SMA hole.
+    """
+    base_plate(root, 0.0)
+    shell(root, 110.0, height_limit=test_collar_height())
+    pi_reference(root)
 
 
 def run(context):
