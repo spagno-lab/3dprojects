@@ -94,6 +94,40 @@ def check_board_envelope():
               f'front offset {start - case.WALL:.2f} mm')
 
 
+def check_connectors_clear_the_walls():
+    """The pocket has to clear the board's real envelope, connectors included.
+
+    This is the check that was missing. Everything else passed while the board
+    physically could not be put in the case: the pocket was sized to the bare
+    PCB, but USB and Ethernet stand 2.81 mm outside that outline, and the wall
+    openings are closed at the top, so nothing can descend into position.
+    """
+    section('Connector envelope against the walls')
+    pi = case.pi_layout()
+    inner_top = case.FLOOR + case.CASE_INNER_HEIGHT
+
+    for label, proud in (
+        ('connector long edge', case.PI_CONNECTOR_PROUD_FRONT),
+        ('USB and Ethernet edge', case.PI_CONNECTOR_PROUD_RIGHT),
+    ):
+        bite = proud - case.PI_SIDE_CLEARANCE
+        check(bite <= 0, f'{label} against its wall',
+              f'connectors stand {proud:.2f} mm proud against {case.PI_SIDE_CLEARANCE:.2f} mm '
+              f'of clearance, so they bite {bite:+.2f} mm into the wall')
+
+    blocked = []
+    for opening in case.pi_io_openings():
+        solid_above = inner_top - (opening['z'] + opening['height'])
+        if solid_above > 0:
+            blocked.append((opening['name'], solid_above))
+    check(not blocked,
+          'openings are open at the top so the board can be lowered in',
+          f'{len(blocked)} of {len(case.pi_io_openings())} openings have solid '
+          f'wall above them, up to '
+          f'{max(b for _, b in blocked) if blocked else 0:.1f} mm'
+          if blocked else 'every opening reaches the parting line')
+
+
 def check_clips_clear_components():
     """No clip hook may overhang a stretch of edge carrying a component."""
     section('Clip hooks against the Pi 4 components')
@@ -258,6 +292,7 @@ def check_standoffs():
 
 def main():
     check_board_envelope()
+    check_connectors_clear_the_walls()
     check_clips_clear_components()
     check_clips_clear_openings()
     check_clip_holds_the_board()

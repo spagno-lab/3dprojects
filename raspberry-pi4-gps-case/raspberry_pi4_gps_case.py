@@ -122,9 +122,22 @@ PI_RIGHT_CONNECTORS = (
     ('USB 3 opening', 22.6, 14.7, 15.6),
     ('Ethernet opening', 2.15, 17.9, 13.6),
 )
-# Connector bodies stand this far proud of the PCB edge, and the GPIO header
-# is modelled as a plain 2x20 block. Reference geometry only.
-PI_CONNECTOR_PROUD = 2.0
+# How far the connector bodies stand proud of the PCB edge. These are not
+# reference-only decoration: they set the real envelope of the board, which is
+# what the pocket has to clear.
+#
+# The in-plane table above was taken from pkoehlers/rpi-case-openscad, whose
+# positions, widths and heights match this file exactly. That model places the
+# USB and Ethernet solids at x = -2.81, i.e. 2.81 mm outside the board edge.
+# The overhang did not come across with the rest of the table, and the pocket
+# ended up sized to the bare PCB.
+PI_CONNECTOR_PROUD_RIGHT = 2.81
+# The USB-C, micro-HDMI and audio bodies on the connector long edge stand out
+# less. 2.0 mm is the audio jack, the worst of them, in the saarbastler board
+# model that txoof/pi4_case builds on.
+PI_CONNECTOR_PROUD_FRONT = 2.0
+# Kept as the larger of the two for anything that wants a single figure.
+PI_CONNECTOR_PROUD = max(PI_CONNECTOR_PROUD_RIGHT, PI_CONNECTOR_PROUD_FRONT)
 PI_GPIO_LENGTH = 50.8
 PI_GPIO_WIDTH = 5.1
 PI_GPIO_HEIGHT = 8.5
@@ -332,8 +345,8 @@ def pi_component_footprints():
         x = pi['x'] + PI_BOARD_LENGTH - source_x - width
         parts.append((
             name.replace(' opening', ''),
-            (x, pi['y'] - PI_CONNECTOR_PROUD,
-             width, PI_CONNECTOR_PROUD + width / 3),
+            (x, pi['y'] - PI_CONNECTOR_PROUD_FRONT,
+             width, PI_CONNECTOR_PROUD_FRONT + width / 3),
             height,
         ))
 
@@ -342,7 +355,7 @@ def pi_component_footprints():
         depth = 21.0 if 'USB' in name else 21.3
         parts.append((
             name.replace(' opening', ''),
-            (pi['x'] + PI_BOARD_LENGTH + PI_CONNECTOR_PROUD - depth, y,
+            (pi['x'] + PI_BOARD_LENGTH + PI_CONNECTOR_PROUD_RIGHT - depth, y,
              depth, width),
             height,
         ))
