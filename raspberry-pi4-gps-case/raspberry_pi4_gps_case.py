@@ -17,17 +17,17 @@ PI_STANDOFF_DIAMETER = 5.0
 # the board edge first, then the opposite side drops past two flexible clips.
 # Pegs in the mounting holes were dropped: they blocked the tilt and forced the
 # board to deflect every clip simultaneously.
-PI_CLIP_BOSS = 2.2
-# The boss only needs to exist where the clip is; running it the full height
-# of the case just puts two slabs on the outside.
-PI_CLIP_BOSS_MARGIN = 2.0
 PI_LIP_LENGTH = 14.0
 PI_LIP_OVERHANG = 1.2
 PI_LIP_HEIGHT = 1.4
-PI_CLIP_THICKNESS = 1.4
+# The arm is recessed into the wall with a blind relief slot behind it, so the
+# outside of the case stays flat. It is rooted at the floor rather than at
+# board level: a 7 mm cantilever keeps the bending strain near 2 per cent,
+# where a 4 mm one reached 10 and would crack even in PETG.
+PI_CLIP_THICKNESS = 1.1
 PI_CLIP_LENGTH = 14.0
-PI_CLIP_RELIEF = 1.0
-PI_CLIP_OVERHANG = 0.8
+PI_CLIP_RELIEF = 0.8
+PI_CLIP_OVERHANG = 0.6
 PI_CLIP_EDGE_GAP = 0.2
 PI_CLIP_LEAD_IN = 1.2
 PI_CLIP_POCKET_MARGIN = 1.0
@@ -126,15 +126,17 @@ LID_THICKNESS = 2.4
 
 # Lid retention. The first print never snapped because the rim was 0.6 mm
 # clear of the wall on each side and had no latch at all.
-LID_RIM_HEIGHT = 6.0
-LID_RIM_THICKNESS = 1.6
+LID_RIM_HEIGHT = 7.0
+LID_RIM_THICKNESS = 1.2
 # PETG lays down slightly fatter than PLA and the rim is a long sliding fit,
 # so it gets 0.25 mm instead of the 0.15 mm that works in PLA.
 LID_RIM_CLEARANCE = 0.25
-LID_LATCH_DEPTH = 1.0
+LID_LATCH_DEPTH = 0.6
 LID_LATCH_LENGTH = 12.0
 LID_LATCH_HEIGHT = 2.0
-LID_LATCH_BELOW_TOP = 4.0
+# Measured down from the rim tip. The rim is what flexes, so the latch sits
+# far from its root: 5 mm of free rim keeps the strain near 4 per cent.
+LID_LATCH_BELOW_TOP = 2.0
 # The pocket is taller than the bump so the lid can seat fully.
 LID_LATCH_LEAD_IN = 0.4
 
@@ -389,7 +391,9 @@ def pi_retention(comp):
     # between the front corner and the microSD slot. One clip on each holds
     # both front corners down. The wall is locally thickened outward so the
     # relief slot never thins it.
-    arm_height = PI_BOARD_THICKNESS + PI_CLIP_LEAD_IN + 1.2
+    # Rooted on the floor so the cantilever is long enough to bend safely.
+    arm_height = (pi['bottom_z'] - FLOOR + PI_BOARD_THICKNESS
+                  + PI_CLIP_LEAD_IN + 1.2)
     front_arm_y = pi['y'] - PI_CLIP_EDGE_GAP - PI_CLIP_THICKNESS
     left_arm_x = pi['x'] - PI_CLIP_EDGE_GAP - PI_CLIP_THICKNESS
     clips = (
@@ -399,33 +403,23 @@ def pi_retention(comp):
     for wall, start in clips:
         margin = PI_CLIP_POCKET_MARGIN
         if wall == 'front':
-            boss = (start - margin, -PI_CLIP_BOSS,
-                    PI_CLIP_LENGTH + 2 * margin, PI_CLIP_BOSS)
             relief = (start - margin, front_arm_y - PI_CLIP_RELIEF,
                       PI_CLIP_LENGTH + 2 * margin, PI_CLIP_RELIEF)
             arm = (start, front_arm_y, PI_CLIP_LENGTH, PI_CLIP_THICKNESS)
             hook = (start, front_arm_y + PI_CLIP_THICKNESS,
                     PI_CLIP_LENGTH, PI_CLIP_OVERHANG + PI_CLIP_EDGE_GAP)
         else:
-            boss = (-PI_CLIP_BOSS, start - margin,
-                    PI_CLIP_BOSS, PI_CLIP_LENGTH + 2 * margin)
             relief = (left_arm_x - PI_CLIP_RELIEF, start - margin,
                       PI_CLIP_RELIEF, PI_CLIP_LENGTH + 2 * margin)
             arm = (left_arm_x, start, PI_CLIP_THICKNESS, PI_CLIP_LENGTH)
             hook = (left_arm_x + PI_CLIP_THICKNESS, start,
                     PI_CLIP_OVERHANG + PI_CLIP_EDGE_GAP, PI_CLIP_LENGTH)
-        boss_top = pi['bottom_z'] + arm_height + PI_CLIP_BOSS_MARGIN
-        rectangle_feature(
-            comp, f'Pi clip boss {wall}', boss[0], boss[1], 0.0,
-            boss[2], boss[3], boss_top,
-            adsk.fusion.FeatureOperations.JoinFeatureOperation)
         rectangle_feature(
             comp, f'Pi clip relief {wall}', relief[0], relief[1],
-            pi['bottom_z'], relief[2], relief[3],
-            arm_height + PI_CLIP_LEAD_IN,
+            FLOOR, relief[2], relief[3], arm_height + PI_CLIP_LEAD_IN,
             adsk.fusion.FeatureOperations.CutFeatureOperation)
         rectangle_feature(
-            comp, f'Pi clip arm {wall}', arm[0], arm[1], pi['bottom_z'],
+            comp, f'Pi clip arm {wall}', arm[0], arm[1], FLOOR,
             arm[2], arm[3], arm_height,
             adsk.fusion.FeatureOperations.JoinFeatureOperation)
         rectangle_feature(

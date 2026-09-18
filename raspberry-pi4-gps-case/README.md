@@ -39,6 +39,23 @@ intersect the GPS cradle and its clips are automatically omitted, leaving a
 solid load-bearing region around the removable module while opening most of
 the area above the Raspberry Pi for passive airflow.
 
+## Snap strain
+
+Both snap features were checked against the standard cantilever formula,
+`strain = 1.5 * t * deflection / L^2`, since PETG yields around 5 per cent:
+
+| feature | thickness | deflection | free length | strain |
+|---|---|---|---|---|
+| PCB clip | 1.1 mm | 0.6 mm | 7.0 mm | 2.0 % |
+| lid latch | 1.2 mm | 0.6 mm | 5.0 mm | 4.3 % |
+
+Two earlier revisions failed this check badly: the clip arm was rooted at
+board level, giving 4 mm of cantilever and 10 per cent strain, and the lid rim
+was 1.6 mm thick with the latch only 2 mm from its root, which works out at
+60 per cent. Both would have snapped off on first assembly. The fix is length,
+not thickness: the clip arm now starts at the floor and the lid latch sits
+near the tip of a taller rim.
+
 ## Reference bodies
 
 The script emits two throwaway bodies so the fit can be checked on screen

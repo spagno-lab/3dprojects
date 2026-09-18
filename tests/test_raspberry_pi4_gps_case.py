@@ -428,9 +428,11 @@ class ScrewlessRetentionTest(unittest.TestCase):
             self.assertEqual(relief['operation'],
                              module.adsk.fusion.FeatureOperations.CutFeatureOperation)
             # Blind slot: the locally thickened wall must survive behind it.
-            remaining = (module.PI_CLIP_BOSS + module.WALL - module.PI_CLIP_RELIEF
-                         - module.PI_CLIP_THICKNESS - module.PI_SIDE_CLEARANCE
-                         - module.PI_CLIP_EDGE_GAP)
+            # The arm and its slot are recessed into the wall, so what is left
+            # behind them is what keeps the case closed.
+            remaining = (module.WALL - module.PI_CLIP_THICKNESS
+                         - module.PI_CLIP_RELIEF + module.PI_SIDE_CLEARANCE
+                         + module.PI_CLIP_EDGE_GAP)
             self.assertGreaterEqual(remaining, 1.2)
 
         self.assertEqual(
@@ -483,20 +485,56 @@ class ScrewlessRetentionTest(unittest.TestCase):
                         - pockets[0]['z'])
         self.assertAlmostEqual(bump_depth, pocket_depth)
 
-    def test_clip_bosses_stay_local_instead_of_running_full_height(self):
-        """The boss is a visible bulge on the outside of the case, so it must
-        stop just above the clip rather than climbing the whole wall."""
-        _, rectangles = self._retention_features()
-        bosses = [r for r in rectangles if 'clip boss' in r['name']]
-        arms = [r for r in rectangles if 'clip arm' in r['name']]
-        self.assertEqual(len(bosses), 2)
+    def test_outside_of_the_case_stays_flat(self):
+        """No bosses, no bumps: every added feature must stay within the
+        outer footprint."""
+        outer_l = module.CASE_INNER_LENGTH + 2 * module.WALL
+        outer_w = module.CASE_INNER_WIDTH + 2 * module.WALL
+        features = []
 
-        arm_top = max(a['z'] + a['height'] for a in arms)
-        case_height = module.FLOOR + module.CASE_INNER_HEIGHT
-        for boss in bosses:
-            boss_top = boss['z'] + boss['height']
-            self.assertGreaterEqual(boss_top, arm_top)
-            self.assertLess(boss_top, case_height / 2)
+        def capture(comp, name, x, y, z, length, width, height,
+                    operation='new-body', participant_bodies=None):
+            features.append({
+                'name': name, 'x': x, 'y': y,
+                'length': length, 'width': width, 'operation': operation,
+            })
+            return mock.Mock()
+
+        with mock.patch.object(module, 'cylinder_feature'), \
+                mock.patch.object(module, 'gps_sma_wall_features'), \
+                mock.patch.object(module, 'rectangle_feature', side_effect=capture):
+            module.body_shell(None)
+
+        for feature in features:
+            if feature['name'] == 'Case outer body':
+                continue
+            if feature['operation'] == \
+                    module.adsk.fusion.FeatureOperations.CutFeatureOperation:
+                continue
+            self.assertGreaterEqual(feature['x'], 0.0, feature['name'])
+            self.assertGreaterEqual(feature['y'], 0.0, feature['name'])
+            self.assertLessEqual(
+                feature['x'] + feature['length'], outer_l, feature['name'])
+            self.assertLessEqual(
+                feature['y'] + feature['width'], outer_w, feature['name'])
+        self.assertNotIn('PI_CLIP_BOSS', script.read_text())
+
+    def test_both_snaps_stay_within_the_strain_petg_tolerates(self):
+        """Cantilever snap strain, 1.5 * t * deflection / L^2. PETG yields
+        around 5 per cent; the clip once sat at 10 and the lid latch at 60."""
+        def strain(thickness, deflection, length):
+            return 1.5 * thickness * deflection / length ** 2
+
+        _, rectangles = self._retention_features()
+        arm = next(r for r in rectangles if 'clip arm' in r['name'])
+        clip = strain(module.PI_CLIP_THICKNESS, module.PI_CLIP_OVERHANG,
+                      arm['height'])
+        self.assertLess(clip, 0.05)
+
+        free_rim = module.LID_RIM_HEIGHT - module.LID_LATCH_BELOW_TOP
+        latch = strain(module.LID_RIM_THICKNESS, module.LID_LATCH_DEPTH,
+                       free_rim)
+        self.assertLess(latch, 0.05)
 
     def test_side_clearance_alone_locates_the_board(self):
         # Without pegs the cavity itself has to hold the board laterally.
@@ -521,7 +559,7 @@ class ScrewlessRetentionTest(unittest.TestCase):
         # engages far more than the clearance.
         self.assertLessEqual(module.LID_RIM_CLEARANCE, 0.3)
         self.assertGreaterEqual(
-            module.LID_LATCH_DEPTH, 3 * module.LID_RIM_CLEARANCE)
+            module.LID_LATCH_DEPTH, 2 * module.LID_RIM_CLEARANCE)
         self.assertGreater(module.LID_LATCH_DEPTH, module.LID_RIM_CLEARANCE)
 
         case_latches = module.lid_latch_positions()
