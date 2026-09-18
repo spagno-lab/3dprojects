@@ -502,7 +502,11 @@ class ScrewlessRetentionTest(unittest.TestCase):
 
     def test_lid_latches_engage_instead_of_floating(self):
         # The first print failed because the rim cleared the wall by 0.6 mm.
-        self.assertLessEqual(module.LID_RIM_CLEARANCE, 0.2)
+        # 0.25 mm is the PETG sliding fit; what matters is that the latch
+        # engages far more than the clearance.
+        self.assertLessEqual(module.LID_RIM_CLEARANCE, 0.3)
+        self.assertGreaterEqual(
+            module.LID_LATCH_DEPTH, 3 * module.LID_RIM_CLEARANCE)
         self.assertGreater(module.LID_LATCH_DEPTH, module.LID_RIM_CLEARANCE)
 
         case_latches = module.lid_latch_positions()

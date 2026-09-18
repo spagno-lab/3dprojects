@@ -117,7 +117,9 @@ LID_THICKNESS = 2.4
 # clear of the wall on each side and had no latch at all.
 LID_RIM_HEIGHT = 6.0
 LID_RIM_THICKNESS = 1.6
-LID_RIM_CLEARANCE = 0.15
+# PETG lays down slightly fatter than PLA and the rim is a long sliding fit,
+# so it gets 0.25 mm instead of the 0.15 mm that works in PLA.
+LID_RIM_CLEARANCE = 0.25
 LID_LATCH_DEPTH = 1.0
 LID_LATCH_LENGTH = 12.0
 LID_LATCH_HEIGHT = 2.0
