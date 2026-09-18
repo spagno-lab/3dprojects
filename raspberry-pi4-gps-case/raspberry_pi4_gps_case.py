@@ -7,19 +7,10 @@ import traceback
 # Raspberry Pi 4 Model B, official mechanical drawing.
 # Datum: PCB corner on the micro-USB-C side of the connector long edge.
 # ---------------------------------------------------------------------------
-PI_LENGTH = 85.0
-PI_WIDTH = 56.0
-PI_THICKNESS = 1.4
-PI_HOLE_INSET = 3.5
-PI_HOLE_PITCH_X = 58.0
-PI_HOLE_PITCH_Y = 49.0
-PI_HOLE_DIAMETER = 2.7
 PI_SIDE_CLEARANCE = 1.0
 PI_STANDOFF_HEIGHT = 3.0
 PI_STANDOFF_DIAMETER = 5.0
-PI_PEG_DIAMETER = PI_HOLE_DIAMETER - 0.3
 PI_PEG_HEIGHT = 1.6
-PI_BOARD_KEEPOUT = 17.0
 
 # Screwless PCB retention. Values follow the measured reference case:
 # 2.2 mm arms, 12 mm long, 1.0 mm of latch interference.
@@ -68,27 +59,15 @@ GPS_COMPONENT_KEEPOUT_INSET = 1.2
 # ---------------------------------------------------------------------------
 # Case. The cavity now hugs the PCB so the connectors sit against their
 # openings instead of floating 3 mm inboard.
-# ---------------------------------------------------------------------------
-WALL = 2.5
-FLOOR = 2.5
-CASE_INNER_LENGTH = PI_LENGTH + 2 * PI_SIDE_CLEARANCE
-CASE_INNER_WIDTH = PI_WIDTH + 2 * PI_SIDE_CLEARANCE
-CASE_INNER_HEIGHT = 29.0
-LID_THICKNESS = 2.4
-
-# Raspberry Pi 4 Model B mechanical datum. Board and mounting dimensions come
-# from the official mechanical drawing. Connector envelopes are cross-checked
-# against public Pi 4 enclosure models and receive one explicit print margin.
 PI_BOARD_LENGTH = 85.0
 PI_BOARD_WIDTH = 56.0
 PI_BOARD_THICKNESS = 1.6
-PI_BOARD_EDGE_CLEARANCE = 2.5
+PI_BOARD_EDGE_CLEARANCE = PI_SIDE_CLEARANCE
 PI_MOUNT_X = 58.0
 PI_MOUNT_Y = 49.0
 PI_MOUNT_EDGE_OFFSET = 3.5
-PI_MOUNT_HOLE_DIAMETER = 3.0
-PI_POST_DIAMETER = 6.0
-PI_POST_HEIGHT = 4.0
+PI_MOUNT_HOLE_DIAMETER = 2.7
+PI_PEG_DIAMETER = PI_MOUNT_HOLE_DIAMETER - 0.3
 PI_IO_CLEARANCE = 0.8
 
 # Connector envelopes in the public reference model's board coordinates.
@@ -117,6 +96,27 @@ LID_MESH_PITCH = 9.0
 LID_MESH_GPS_MARGIN = 2.0
 
 
+# ---------------------------------------------------------------------------
+WALL = 2.5
+FLOOR = 2.5
+CASE_INNER_LENGTH = PI_BOARD_LENGTH + 2 * PI_SIDE_CLEARANCE
+CASE_INNER_WIDTH = PI_BOARD_WIDTH + 2 * PI_SIDE_CLEARANCE
+CASE_INNER_HEIGHT = 29.0
+LID_THICKNESS = 2.4
+
+# Lid retention. The first print never snapped because the rim was 0.6 mm
+# clear of the wall on each side and had no latch at all.
+LID_RIM_HEIGHT = 6.0
+LID_RIM_THICKNESS = 1.6
+LID_RIM_CLEARANCE = 0.15
+LID_LATCH_DEPTH = 1.0
+LID_LATCH_LENGTH = 12.0
+LID_LATCH_HEIGHT = 2.0
+LID_LATCH_BELOW_TOP = 4.0
+
+# Raspberry Pi 4 Model B mechanical datum. Board and mounting dimensions come
+# from the official mechanical drawing. Connector envelopes are cross-checked
+# against public Pi 4 enclosure models and receive one explicit print margin.
 def cm(mm):
     return mm / 10.0
 
@@ -162,6 +162,23 @@ def rectangle_feature(comp, name, x, y, z, length, width, height,
     return feature
 
 
+def cylinder_feature(comp, name, center_x, center_y, z, diameter, height,
+                     operation=adsk.fusion.FeatureOperations.JoinFeatureOperation,
+                     participant_bodies=None):
+    sketch = comp.sketches.add(offset_plane(comp, z))
+    sketch.name = name
+    sketch.sketchCurves.sketchCircles.addByCenterRadius(
+        adsk.core.Point3D.create(cm(center_x), cm(center_y), 0), cm(diameter / 2))
+    extrudes = comp.features.extrudeFeatures
+    extrude_input = extrudes.createInput(sketch.profiles.item(0), operation)
+    if participant_bodies:
+        extrude_input.participantBodies = participant_bodies
+    extrude_input.setDistanceExtent(False, value(height))
+    feature = extrudes.add(extrude_input)
+    feature.name = name
+    return feature
+
+
 def rectangle_mesh_feature(comp, target_body, name, rectangles, height):
     """Cut many rectangular mesh cells in one sketch/extrude operation."""
     sketch = comp.sketches.add(comp.xYConstructionPlane)
@@ -190,7 +207,7 @@ def pi_layout():
     """Return the Pi board datum and mounting locations inside the case."""
     board_x = WALL + PI_BOARD_EDGE_CLEARANCE
     board_y = WALL + PI_BOARD_EDGE_CLEARANCE
-    board_bottom_z = FLOOR + PI_POST_HEIGHT
+    board_bottom_z = FLOOR + PI_STANDOFF_HEIGHT
     return {
         'x': board_x,
         'y': board_y,
@@ -303,81 +320,35 @@ def rear_wall_hole(comp, target_body, name, center_x, center_z, wall_y,
     return feature
 
 
-def pi_layout(x_offset=0):
-    """PCB datum and derived heights for the Pi inside the cavity."""
-    pcb_x = x_offset + WALL + PI_SIDE_CLEARANCE
-    pcb_y = WALL + PI_SIDE_CLEARANCE
-    board_z = FLOOR + PI_STANDOFF_HEIGHT
-    return {
-        'x': pcb_x,
-        'y': pcb_y,
-        'board_z': board_z,
-        'top_z': board_z + PI_THICKNESS,
-        'holes': [
-            (pcb_x + PI_HOLE_INSET, pcb_y + PI_HOLE_INSET),
-            (pcb_x + PI_HOLE_INSET + PI_HOLE_PITCH_X, pcb_y + PI_HOLE_INSET),
-            (pcb_x + PI_HOLE_INSET, pcb_y + PI_HOLE_INSET + PI_HOLE_PITCH_Y),
-            (pcb_x + PI_HOLE_INSET + PI_HOLE_PITCH_X,
-             pcb_y + PI_HOLE_INSET + PI_HOLE_PITCH_Y),
-        ],
-    }
-
-
-def pi_port_openings(x_offset=0):
-    """Port cut-outs referenced to the PCB datum, not to the case shell.
-
-    Connector centres come from the Raspberry Pi 4 Model B mechanical drawing.
-    Each opening keeps 1 mm of margin around the connector body.
-    """
-    pi = pi_layout(x_offset)
-    edge_z = pi['board_z'] - 1.0
-    long_edge = [
-        ('USB-C opening', 11.2, 13.0, 7.0),
-        ('Micro-HDMI 1 opening', 26.0, 11.0, 7.0),
-        ('Micro-HDMI 2 opening', 39.5, 11.0, 7.0),
-        ('Audio opening', 54.0, 11.0, 9.0),
-    ]
-    short_edge = [
-        ('USB pair 2 opening', 9.0, 17.5, 18.0),
-        ('USB pair 1 opening', 27.0, 17.5, 18.0),
-        ('Ethernet opening', 45.75, 18.0, 16.0),
-    ]
-    return {
-        'edge_z': edge_z,
-        'long_edge': [
-            (name, pi['x'] + centre - width / 2, width, height)
-            for name, centre, width, height in long_edge
-        ],
-        'short_edge': [
-            (name, pi['y'] + centre - width / 2, width, height)
-            for name, centre, width, height in short_edge
-        ],
-    }
-
-
-def pi_retention(comp, x_offset=0):
+def pi_retention(comp):
     """Screwless retention: locating pegs plus four cantilever clips.
 
     The printed M2.5 posts were dropped. The board drops onto four standoffs
     whose small pegs enter the mounting holes, and four clips snap over the
     board edge. PI_CLIP_OVERHANG of material sits on top of the PCB.
     """
-    pi = pi_layout(x_offset)
-    for index, (x, y) in enumerate(pi['holes'], 1):
+    pi = pi_layout()
+    holes = [
+        (pi['mount_x'], pi['mount_y']),
+        (pi['mount_x'] + PI_MOUNT_X, pi['mount_y']),
+        (pi['mount_x'], pi['mount_y'] + PI_MOUNT_Y),
+        (pi['mount_x'] + PI_MOUNT_X, pi['mount_y'] + PI_MOUNT_Y),
+    ]
+    for index, (x, y) in enumerate(holes, 1):
         cylinder_feature(comp, f'Pi standoff {index}', x, y, FLOOR,
                          PI_STANDOFF_DIAMETER, PI_STANDOFF_HEIGHT)
         cylinder_feature(comp, f'Pi locating peg {index}', x, y,
-                         pi['board_z'], PI_PEG_DIAMETER, PI_PEG_HEIGHT)
+                         pi['bottom_z'], PI_PEG_DIAMETER, PI_PEG_HEIGHT)
 
-    clip_z = pi['board_z']
-    arm_height = PI_THICKNESS + PI_CLIP_LEAD_IN + 1.2
+    clip_z = pi['bottom_z']
+    arm_height = PI_BOARD_THICKNESS + PI_CLIP_LEAD_IN + 1.2
     left_x = pi['x'] - PI_SIDE_CLEARANCE - PI_CLIP_THICKNESS
-    right_x = pi['x'] + PI_LENGTH + PI_SIDE_CLEARANCE
+    right_x = pi['x'] + PI_BOARD_LENGTH + PI_SIDE_CLEARANCE
     clip_positions = (
         ('front left', left_x, pi['y'] + 14.0),
-        ('rear left', left_x, pi['y'] + PI_WIDTH - 14.0 - PI_CLIP_LENGTH),
+        ('rear left', left_x, pi['y'] + PI_BOARD_WIDTH - 14.0 - PI_CLIP_LENGTH),
         ('front right', right_x, pi['y'] + 14.0),
-        ('rear right', right_x, pi['y'] + PI_WIDTH - 14.0 - PI_CLIP_LENGTH),
+        ('rear right', right_x, pi['y'] + PI_BOARD_WIDTH - 14.0 - PI_CLIP_LENGTH),
     )
     for name, x, y in clip_positions:
         rectangle_feature(
@@ -387,7 +358,7 @@ def pi_retention(comp, x_offset=0):
         hook_x = x + PI_CLIP_THICKNESS if x < pi['x'] else x - PI_CLIP_OVERHANG
         rectangle_feature(
             comp, f'Pi clip hook {name}', hook_x, y,
-            clip_z + PI_THICKNESS, PI_CLIP_OVERHANG, PI_CLIP_LENGTH,
+            clip_z + PI_BOARD_THICKNESS, PI_CLIP_OVERHANG, PI_CLIP_LENGTH,
             PI_CLIP_LEAD_IN,
             adsk.fusion.FeatureOperations.JoinFeatureOperation)
 
@@ -456,33 +427,7 @@ def body_shell(comp):
     )
 
     # Pi 4 mounting posts: official 58 x 49 mm pattern, with print clearance.
-    pi = pi_layout()
-    pi_x = pi['mount_x']
-    pi_y = pi['mount_y']
-    for index, (x, y) in enumerate(((pi_x, pi_y), (pi_x + PI_MOUNT_X, pi_y),
-                                    (pi_x, pi_y + PI_MOUNT_Y),
-                                    (pi_x + PI_MOUNT_X, pi_y + PI_MOUNT_Y)), 1):
-        sketch = comp.sketches.add(offset_plane(comp, FLOOR))
-        sketch.name = f'Pi post {index}'
-        circles = sketch.sketchCurves.sketchCircles
-        circles.addByCenterRadius(
-            adsk.core.Point3D.create(cm(x), cm(y), 0),
-            cm(PI_POST_DIAMETER / 2),
-        )
-        post = comp.features.extrudeFeatures.createInput(
-            sketch.profiles.item(0), adsk.fusion.FeatureOperations.JoinFeatureOperation)
-        post.setDistanceExtent(False, value(PI_POST_HEIGHT))
-        comp.features.extrudeFeatures.add(post)
-
-        hole_sketch = comp.sketches.add(offset_plane(comp, FLOOR))
-        hole_sketch.sketchCurves.sketchCircles.addByCenterRadius(
-            adsk.core.Point3D.create(cm(x), cm(y), 0),
-            cm(PI_MOUNT_HOLE_DIAMETER / 2),
-        )
-        hole = comp.features.extrudeFeatures.createInput(
-            hole_sketch.profiles.item(0), adsk.fusion.FeatureOperations.CutFeatureOperation)
-        hole.setDistanceExtent(False, value(PI_POST_HEIGHT + 1.0))
-        comp.features.extrudeFeatures.add(hole)
+    pi_retention(comp)
 
     # Derive every wall opening from the same assembled Pi board datum.
     for opening in pi_io_openings():

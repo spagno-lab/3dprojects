@@ -110,26 +110,29 @@ class RaspberryPi4GpsCaseTest(unittest.TestCase):
         self.assertEqual(module.PI_MOUNT_X, 58.0)
         self.assertEqual(module.PI_MOUNT_Y, 49.0)
         self.assertEqual(module.PI_MOUNT_EDGE_OFFSET, 3.5)
-        self.assertEqual(module.PI_MOUNT_HOLE_DIAMETER, 3.0)
-        self.assertAlmostEqual(layout['x'], 4.9)
-        self.assertAlmostEqual(layout['y'], 4.9)
-        self.assertAlmostEqual(layout['mount_x'], 8.4)
-        self.assertAlmostEqual(layout['mount_y'], 8.4)
-        self.assertAlmostEqual(layout['bottom_z'], 6.4)
-        self.assertAlmostEqual(layout['top_z'], 8.0)
+        self.assertEqual(module.PI_MOUNT_HOLE_DIAMETER, 2.7)
+        # 1 mm side clearance: the measured reference case puts the mounting
+        # holes at 6.95 mm, the old 2.5 mm clearance pushed them to 8.4 mm and
+        # moved the connectors away from their openings.
+        self.assertAlmostEqual(layout['x'], 3.5)
+        self.assertAlmostEqual(layout['y'], 3.5)
+        self.assertAlmostEqual(layout['mount_x'], 7.0)
+        self.assertAlmostEqual(layout['mount_y'], 7.0)
+        self.assertAlmostEqual(layout['bottom_z'], 5.5)
+        self.assertAlmostEqual(layout['top_z'], 7.1)
 
     def test_pi_io_openings_are_derived_from_assembled_board_datum(self):
         openings = {opening['name']: opening
                     for opening in module.pi_io_openings()}
 
         expected = {
-            'USB-C opening': ('front', 9.8, 13.8, 7.2, 6.1),
-            'Micro-HDMI 1 opening': ('front', 26.1, 10.1, 7.2, 6.1),
-            'Micro-HDMI 2 opening': ('front', 39.9, 10.1, 7.2, 6.1),
-            'Audio opening': ('front', 53.7, 10.1, 7.2, 8.5),
-            'USB 2 opening': ('right', 5.8, 16.3, 7.2, 17.2),
-            'USB 3 opening': ('right', 22.8, 16.3, 7.2, 17.2),
-            'Ethernet opening': ('right', 40.05, 19.5, 7.2, 15.2),
+            'USB-C opening': ('front', 8.4, 13.8, 6.3, 6.1),
+            'Micro-HDMI 1 opening': ('front', 24.7, 10.1, 6.3, 6.1),
+            'Micro-HDMI 2 opening': ('front', 38.5, 10.1, 6.3, 6.1),
+            'Audio opening': ('front', 52.3, 10.1, 6.3, 8.5),
+            'USB 2 opening': ('right', 4.4, 16.3, 6.3, 17.2),
+            'USB 3 opening': ('right', 21.4, 16.3, 6.3, 17.2),
+            'Ethernet opening': ('right', 38.65, 19.5, 6.3, 15.2),
         }
         for name, (wall, start, span, z, height) in expected.items():
             opening = openings[name]
@@ -141,9 +144,9 @@ class RaspberryPi4GpsCaseTest(unittest.TestCase):
 
         microsd = openings['MicroSD opening']
         self.assertEqual(microsd['wall'], 'left')
-        self.assertAlmostEqual(microsd['start'], 23.945)
+        self.assertAlmostEqual(microsd['start'], 22.545)
         self.assertEqual(microsd['span'], 18.0)
-        self.assertAlmostEqual(microsd['z'], 4.0)
+        self.assertAlmostEqual(microsd['z'], 3.0)
         self.assertEqual(microsd['height'], 8.0)
 
     def test_lid_mesh_has_two_millimetre_ribs_and_avoids_gps_cradle(self):
@@ -151,7 +154,8 @@ class RaspberryPi4GpsCaseTest(unittest.TestCase):
         outer_w = module.CASE_INNER_WIDTH + 2 * module.WALL
         cells, gps_keepout = module.lid_mesh_layout(outer_l, outer_w, 110.0)
 
-        self.assertGreater(len(cells), 40)
+        # 39 cells with the current 92 x 63 footprint and GPS keep-out.
+        self.assertGreaterEqual(len(cells), 36)
         self.assertEqual(module.LID_MESH_PITCH - module.LID_MESH_OPENING, 2.0)
         self.assertTrue(all(
             110.0 + module.LID_MESH_EDGE_MARGIN <= cell[0]
@@ -307,16 +311,18 @@ class ScrewlessRetentionTest(unittest.TestCase):
     def test_cavity_hugs_the_pcb_so_connectors_reach_their_openings(self):
         self.assertEqual(
             module.CASE_INNER_LENGTH,
-            module.PI_LENGTH + 2 * module.PI_SIDE_CLEARANCE)
+            module.PI_BOARD_LENGTH + 2 * module.PI_SIDE_CLEARANCE)
         self.assertEqual(
             module.CASE_INNER_WIDTH,
-            module.PI_WIDTH + 2 * module.PI_SIDE_CLEARANCE)
+            module.PI_BOARD_WIDTH + 2 * module.PI_SIDE_CLEARANCE)
+        self.assertEqual(
+            module.PI_BOARD_EDGE_CLEARANCE, module.PI_SIDE_CLEARANCE)
         self.assertLessEqual(module.PI_SIDE_CLEARANCE, 1.0)
 
     def test_no_screw_posts_remain_and_pegs_fit_the_mounting_holes(self):
         source = script.read_text()
         self.assertNotIn('Pi post', source)
-        self.assertLess(module.PI_PEG_DIAMETER, module.PI_HOLE_DIAMETER)
+        self.assertLess(module.PI_PEG_DIAMETER, module.PI_MOUNT_HOLE_DIAMETER)
 
     def test_retention_uses_four_standoffs_and_four_clips(self):
         cylinders, rectangles = [], []
@@ -345,25 +351,22 @@ class ScrewlessRetentionTest(unittest.TestCase):
         layout = module.pi_layout()
         # Every hook must overhang the board, i.e. start at the PCB top face.
         for hook in hooks:
-            self.assertAlmostEqual(hook[3], layout['top_z'])
+            self.assertAlmostEqual(
+                hook[3], layout['bottom_z'] + module.PI_BOARD_THICKNESS)
             self.assertEqual(hook[4], module.PI_CLIP_OVERHANG)
 
-    def test_port_openings_follow_the_pcb_datum(self):
-        ports = module.pi_port_openings()
+    def test_every_opening_stays_inside_the_board_footprint(self):
         layout = module.pi_layout()
-        names = {entry[0] for entry in ports['long_edge']}
-        names |= {entry[0] for entry in ports['short_edge']}
-        self.assertIn('Ethernet opening', names)
-        self.assertIn('USB-C opening', names)
-
-        usb_c = next(e for e in ports['long_edge'] if e[0] == 'USB-C opening')
-        centre = usb_c[1] + usb_c[2] / 2
-        self.assertAlmostEqual(centre - layout['x'], 11.2)
-
-        ethernet = next(
-            e for e in ports['short_edge'] if e[0] == 'Ethernet opening')
-        centre = ethernet[1] + ethernet[2] / 2
-        self.assertAlmostEqual(centre - layout['y'], 45.75)
+        for opening in module.pi_io_openings():
+            start, span = opening['start'], opening['span']
+            if opening['wall'] == 'front':
+                self.assertGreaterEqual(start, layout['x'] - 1.0)
+                self.assertLessEqual(
+                    start + span, layout['x'] + module.PI_BOARD_LENGTH + 1.0)
+            else:
+                self.assertGreaterEqual(start, layout['y'] - 1.0)
+                self.assertLessEqual(
+                    start + span, layout['y'] + module.PI_BOARD_WIDTH + 1.0)
 
     def test_lid_latches_engage_instead_of_floating(self):
         # The first print failed because the rim cleared the wall by 0.6 mm.
@@ -383,8 +386,10 @@ class ScrewlessRetentionTest(unittest.TestCase):
         def capture(comp, name, x, y, z, length, width, height,
                     operation='new-body', participant_bodies=None):
             rectangles.append((name, x, y, z, length, width, height))
+            return mock.Mock()
 
-        with mock.patch.object(module, 'rectangle_feature', side_effect=capture):
+        with mock.patch.object(module, 'rectangle_feature', side_effect=capture), \
+                mock.patch.object(module, 'rectangle_mesh_feature'):
             module.lid(None, 110.0)
 
         bumps = [r for r in rectangles if 'latch bump' in r[0]]
