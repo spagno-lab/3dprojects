@@ -122,6 +122,8 @@ LID_LATCH_DEPTH = 1.0
 LID_LATCH_LENGTH = 12.0
 LID_LATCH_HEIGHT = 2.0
 LID_LATCH_BELOW_TOP = 4.0
+# The pocket is taller than the bump so the lid can seat fully.
+LID_LATCH_LEAD_IN = 0.4
 
 # Raspberry Pi 4 Model B mechanical datum. Board and mounting dimensions come
 # from the official mechanical drawing. Connector envelopes are cross-checked
@@ -508,6 +510,21 @@ def body_shell(comp):
                 adsk.fusion.FeatureOperations.CutFeatureOperation,
                 [case_body],
             )
+
+    # Latch pockets for the lid rim bumps. Without these the bumps would jam
+    # against the wall and the lid could not close at all.
+    latches = lid_latch_positions()
+    for x in latches['x_positions']:
+        rectangle_feature(
+            comp, 'Lid latch pocket front', x, WALL - LID_LATCH_DEPTH,
+            latches['z'], LID_LATCH_LENGTH, LID_LATCH_DEPTH,
+            LID_LATCH_HEIGHT + LID_LATCH_LEAD_IN,
+            adsk.fusion.FeatureOperations.CutFeatureOperation)
+        rectangle_feature(
+            comp, 'Lid latch pocket rear', x, outer_w - WALL,
+            latches['z'], LID_LATCH_LENGTH, LID_LATCH_DEPTH,
+            LID_LATCH_HEIGHT + LID_LATCH_LEAD_IN,
+            adsk.fusion.FeatureOperations.CutFeatureOperation)
 
     # Round rear-wall hole aligned with the assembled SMA axis. A shallow
     # circular counterbore leaves 2 mm of local wall so an antenna that stops

@@ -436,6 +436,53 @@ class ScrewlessRetentionTest(unittest.TestCase):
         self.assertEqual(
             len([r for r in rectangles if 'clip arm' in r['name']]), 2)
 
+    def test_every_lid_bump_has_a_matching_pocket_in_the_case(self):
+        """A bump with no pocket does not latch, it just stops the lid from
+        closing: the pockets were lost in an earlier reconciliation."""
+        lid_features, case_features = [], []
+
+        def capture(store):
+            def inner(comp, name, x, y, z, length, width, height,
+                      operation='new-body', participant_bodies=None):
+                store.append({
+                    'name': name, 'x': x, 'y': y, 'z': z,
+                    'length': length, 'width': width, 'height': height,
+                    'operation': operation,
+                })
+                return mock.Mock()
+            return inner
+
+        with mock.patch.object(module, 'rectangle_mesh_feature'), \
+                mock.patch.object(module, 'rectangle_feature',
+                                  side_effect=capture(lid_features)):
+            module.lid(None, 110.0)
+        with mock.patch.object(module, 'cylinder_feature'), \
+                mock.patch.object(module, 'pi_retention'), \
+                mock.patch.object(module, 'gps_sma_wall_features'), \
+                mock.patch.object(module, 'rectangle_mesh_feature'), \
+                mock.patch.object(module, 'rectangle_feature',
+                                  side_effect=capture(case_features)):
+            module.body_shell(None)
+
+        bumps = [r for r in lid_features if 'latch bump' in r['name']]
+        pockets = [r for r in case_features if 'latch pocket' in r['name']]
+        self.assertEqual(len(bumps), 4)
+        self.assertEqual(len(pockets), len(bumps))
+
+        for pocket in pockets:
+            self.assertEqual(
+                pocket['operation'],
+                module.adsk.fusion.FeatureOperations.CutFeatureOperation)
+            # The pocket must be at least as deep and as tall as the bump.
+            self.assertGreaterEqual(pocket['width'], module.LID_LATCH_DEPTH)
+            self.assertGreaterEqual(pocket['height'], module.LID_LATCH_HEIGHT)
+
+        # Bump and pocket must sit at the same depth below the case rim.
+        bump_depth = module.LID_RIM_HEIGHT - (bumps[0]['z'] - module.LID_THICKNESS)
+        pocket_depth = (module.FLOOR + module.CASE_INNER_HEIGHT
+                        - pockets[0]['z'])
+        self.assertAlmostEqual(bump_depth, pocket_depth)
+
     def test_side_clearance_alone_locates_the_board(self):
         # Without pegs the cavity itself has to hold the board laterally.
         self.assertLessEqual(module.PI_SIDE_CLEARANCE, 0.5)
