@@ -39,6 +39,25 @@ intersect the GPS cradle and its clips are automatically omitted, leaving a
 solid load-bearing region around the removable module while opening most of
 the area above the Raspberry Pi for passive airflow.
 
+## Reference bodies
+
+The script emits two throwaway bodies so the fit can be checked on screen
+before printing:
+
+- **body 3**, `GPS module - removable fit reference`;
+- **body 4**, `Raspberry Pi 4 - removable fit reference`: PCB, the four
+  connectors on the front edge, the three on the port edge, the GPIO header as
+  a plain 2x20 block, and the microSD card sticking out.
+
+Body 4 is placed exactly where the standoffs and the clips put the real board,
+and its connectors use the same rotation as the wall openings, so a mismatch on
+screen is a mismatch in plastic. Hide or delete both bodies before exporting
+the mesh. The GPIO block is a volume placeholder, not a pin-accurate model.
+
+Measured clearances with both bodies in place: 0.8 mm around every connector,
+8.8 mm between the tallest connector and the lid, and 2.9 mm between the Pi and
+the GPS cradle hanging from the lid.
+
 ## GPS carrier reference
 
 The cradle follows the supplied front, rear, and side photos and the measured

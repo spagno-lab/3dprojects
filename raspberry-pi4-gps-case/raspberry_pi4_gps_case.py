@@ -92,6 +92,14 @@ PI_RIGHT_CONNECTORS = (
     ('USB 3 opening', 22.6, 14.7, 15.6),
     ('Ethernet opening', 2.15, 17.9, 13.6),
 )
+# Connector bodies stand this far proud of the PCB edge, and the GPIO header
+# is modelled as a plain 2x20 block. Reference geometry only.
+PI_CONNECTOR_PROUD = 2.0
+PI_GPIO_LENGTH = 50.8
+PI_GPIO_WIDTH = 5.1
+PI_GPIO_HEIGHT = 8.5
+PI_GPIO_EDGE_OFFSET = 3.5
+PI_GPIO_FIRST_PIN = 3.5
 PI_MICROSD_Y = 22.4
 PI_MICROSD_WIDTH = 11.11
 PI_MICROSD_ACCESS_WIDTH = 18.0
@@ -715,6 +723,65 @@ def gps_reference(comp, x_offset=0):
         )
 
 
+def pi_reference(comp):
+    """Add one removable Raspberry Pi 4 body to check fit inside the case.
+
+    The board sits exactly where the standoffs and clips put it, and every
+    connector is placed with the same rotation used for the wall openings, so
+    if a connector does not line up here it will not line up in plastic. The
+    GPIO header is a plain block: it exists to show the volume the ribbon and
+    the GPS wiring have to share, not to model individual pins.
+    """
+    pi = pi_layout()
+    board_feature = rectangle_feature(
+        comp, 'Pi reference PCB', pi['x'], pi['y'], pi['bottom_z'],
+        PI_BOARD_LENGTH, PI_BOARD_WIDTH, PI_BOARD_THICKNESS,
+    )
+    pi_body = board_feature.bodies.item(0)
+    pi_body.name = 'Raspberry Pi 4 - removable fit reference'
+
+    top = pi['bottom_z'] + PI_BOARD_THICKNESS
+
+    for name, source_x, width, height in PI_FRONT_CONNECTORS:
+        x = pi['x'] + PI_BOARD_LENGTH - source_x - width
+        rectangle_feature(
+            comp, f'Pi reference {name.replace(" opening", "")}',
+            x, pi['y'] - PI_CONNECTOR_PROUD, top,
+            width, PI_CONNECTOR_PROUD + width / 3, height,
+            adsk.fusion.FeatureOperations.JoinFeatureOperation,
+            [pi_body],
+        )
+
+    for name, source_y, width, height in PI_RIGHT_CONNECTORS:
+        y = pi['y'] + PI_BOARD_WIDTH - source_y - width
+        depth = 21.0 if 'USB' in name else 21.3
+        rectangle_feature(
+            comp, f'Pi reference {name.replace(" opening", "")}',
+            pi['x'] + PI_BOARD_LENGTH + PI_CONNECTOR_PROUD - depth, y, top,
+            depth, width, height,
+            adsk.fusion.FeatureOperations.JoinFeatureOperation,
+            [pi_body],
+        )
+
+    rectangle_feature(
+        comp, 'Pi reference GPIO header',
+        pi['x'] + PI_GPIO_FIRST_PIN,
+        pi['y'] + PI_BOARD_WIDTH - PI_GPIO_EDGE_OFFSET - PI_GPIO_WIDTH / 2,
+        top, PI_GPIO_LENGTH, PI_GPIO_WIDTH, PI_GPIO_HEIGHT,
+        adsk.fusion.FeatureOperations.JoinFeatureOperation,
+        [pi_body],
+    )
+
+    microsd_y = (pi['y'] + PI_BOARD_WIDTH - PI_MICROSD_Y
+                 - PI_MICROSD_WIDTH)
+    rectangle_feature(
+        comp, 'Pi reference microSD card', pi['x'] - 4.0, microsd_y,
+        pi['bottom_z'] - 1.2, 15.0, PI_MICROSD_WIDTH, 1.2,
+        adsk.fusion.FeatureOperations.JoinFeatureOperation,
+        [pi_body],
+    )
+
+
 def run(context):
     ui = None
     try:
@@ -729,10 +796,11 @@ def run(context):
         body_shell(root)
         lid(root, 110.0)
         gps_reference(root, 110.0)
+        pi_reference(root)
         app.activeViewport.fit()
-        ui.messageBox('Case generated. The Pi is held by pegs and four clips, '
-                      'the lid snaps on four latches, and body 3 is the '
-                      'removable GPS fit reference.')
+        ui.messageBox('Case generated. Body 3 is the removable GPS reference, '
+                      'body 4 is the removable Raspberry Pi 4 reference. '
+                      'Hide or delete either one to inspect the case.')
     except Exception:
         if ui:
             ui.messageBox('Failed:\n{}'.format(traceback.format_exc()))

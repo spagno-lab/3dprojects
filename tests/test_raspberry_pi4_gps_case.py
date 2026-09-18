@@ -538,5 +538,80 @@ class ScrewlessRetentionTest(unittest.TestCase):
         self.assertAlmostEqual(bump_z.pop(), expected)
 
 
+class PiReferenceBodyTest(unittest.TestCase):
+    def _features(self):
+        features = []
+        first = mock.Mock()
+        first.bodies.item.return_value = mock.Mock()
+
+        def capture(comp, name, x, y, z, length, width, height,
+                    operation='new-body', participant_bodies=None):
+            features.append({
+                'name': name, 'x': x, 'y': y, 'z': z,
+                'length': length, 'width': width, 'height': height,
+                'operation': operation,
+                'participants': participant_bodies,
+            })
+            return first
+
+        with mock.patch.object(module, 'rectangle_feature', side_effect=capture):
+            module.pi_reference(None)
+        return features
+
+    def test_reference_is_one_body_at_the_assembled_datum(self):
+        features = self._features()
+        board = features[0]
+        layout = module.pi_layout()
+
+        self.assertEqual(board['name'], 'Pi reference PCB')
+        self.assertEqual(
+            (board['length'], board['width'], board['height']),
+            (module.PI_BOARD_LENGTH, module.PI_BOARD_WIDTH,
+             module.PI_BOARD_THICKNESS))
+        self.assertAlmostEqual(board['x'], layout['x'])
+        self.assertAlmostEqual(board['y'], layout['y'])
+        self.assertAlmostEqual(board['z'], layout['bottom_z'])
+
+        # Everything else joins that one body so it stays removable.
+        for feature in features[1:]:
+            self.assertEqual(
+                feature['operation'],
+                module.adsk.fusion.FeatureOperations.JoinFeatureOperation)
+            self.assertIsNotNone(feature['participants'])
+
+    def test_every_connector_lands_inside_its_opening(self):
+        """This is the point of the body: if a connector misses here, it will
+        miss in plastic too."""
+        features = self._features()
+        openings = {o['name']: o for o in module.pi_io_openings()}
+
+        checked = 0
+        for feature in features:
+            name = feature['name'].replace('Pi reference ', '') + ' opening'
+            opening = openings.get(name)
+            if opening is None:
+                continue
+            checked += 1
+            if opening['wall'] == 'front':
+                start, end = feature['x'], feature['x'] + feature['length']
+            else:
+                start, end = feature['y'], feature['y'] + feature['width']
+            self.assertGreaterEqual(start, opening['start'])
+            self.assertLessEqual(end, opening['start'] + opening['span'])
+            self.assertGreaterEqual(feature['z'], opening['z'])
+            self.assertLessEqual(
+                feature['z'] + feature['height'],
+                opening['z'] + opening['height'])
+        self.assertEqual(checked, 7)
+
+    def test_board_and_gps_cradle_do_not_share_the_same_space(self):
+        features = self._features()
+        tallest = max(f['z'] + f['height'] for f in features)
+        lid_inner = module.FLOOR + module.CASE_INNER_HEIGHT
+        cradle_drop = (module.GPS_BACK_COMPONENT_DEPTH + module.GPS_FIT_CLEARANCE
+                       + module.GPS_BOARD_THICKNESS + 0.8)
+        self.assertGreater(lid_inner - cradle_drop - tallest, 1.0)
+
+
 if __name__ == '__main__':
     unittest.main()
