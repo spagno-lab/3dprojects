@@ -58,7 +58,12 @@ PI_PADS = (
 # reaches on either side, so they are the same on every wall.
 # Positions are absolute along the wall, because the tabs live in the wall
 # rather than over the board.
-BASE_TAB_THICKNESS = 1.0
+# 0.8 mm, not 1.0: the whole joint has to fit inside the 2.5 mm wall, because
+# the outside of this case stays flat. The budget is slot (thickness plus
+# clearance) plus bump pocket plus at least two perimeters of skin behind it,
+# which leaves 0.9 mm here. A thinner arm also bends more easily, so the
+# strain drops to 2.0 per cent.
+BASE_TAB_THICKNESS = 0.8
 BASE_TAB_HEIGHT = 7.0
 BASE_TAB_CLEARANCE = 0.2
 BASE_TAB_BUMP = 0.6
@@ -66,9 +71,6 @@ BASE_TAB_BUMP_HEIGHT = 2.0
 # Centre of the bump above the parting plane. Keeping it near the tip is what
 # holds the bending strain down; see the table in the README.
 BASE_TAB_BUMP_CENTRE = 6.0
-# The shell wall is thickened outward at each tab so the slot and the bump
-# pocket never thin it below two perimeters.
-BASE_TAB_BOSS = 1.5
 BASE_TABS = (
     # Short, because the USB-C opening starts 8.4 mm along the front wall.
     ('front', 2.6, 5.4),
@@ -533,10 +535,6 @@ def base_tab_layout(x_offset=0):
                     arm_l + 2 * BASE_TAB_CLEARANCE, slot_depth)
             pocket = (x_offset + start - BASE_TAB_CLEARANCE, bump_y,
                       arm_l + 2 * BASE_TAB_CLEARANCE, BASE_TAB_BUMP)
-            boss = (x_offset + start - 2.0,
-                    -BASE_TAB_BOSS if wall == 'front'
-                    else outer_w - JOIN_OVERLAP,
-                    arm_l + 4.0, BASE_TAB_BOSS + JOIN_OVERLAP)
         else:
             arm_l, arm_w = BASE_TAB_THICKNESS, length
             arm_x = WALL - BASE_TAB_THICKNESS
@@ -548,8 +546,6 @@ def base_tab_layout(x_offset=0):
             pocket = (x_offset + WALL - slot_depth - BASE_TAB_BUMP,
                       start - BASE_TAB_CLEARANCE, BASE_TAB_BUMP,
                       arm_w + 2 * BASE_TAB_CLEARANCE)
-            boss = (x_offset - BASE_TAB_BOSS, start - 2.0,
-                    BASE_TAB_BOSS + JOIN_OVERLAP, arm_w + 4.0)
         tabs.append({
             'wall': wall,
             'start': start,
@@ -558,7 +554,6 @@ def base_tab_layout(x_offset=0):
             'bump': bump,
             'slot': slot,
             'pocket': pocket,
-            'boss': boss,
         })
     return tabs
 
@@ -732,15 +727,6 @@ def shell(comp, x_offset=0):
         comp, 'Shell outer body', x_offset, 0, PARTING_Z,
         outer_l, outer_w, shell_height)
     shell_body = outer_feature.bodies.item(0)
-
-    # Local outward thickening at each tab, so the slot and the bump pocket
-    # never take the wall below two perimeters.
-    for index, tab in enumerate(base_tab_layout(x_offset), 1):
-        boss = tab['boss']
-        rectangle_feature(
-            comp, f'Shell tab boss {index}', boss[0], boss[1], PARTING_Z,
-            boss[2], boss[3], tab_bump_z()['slot_height'] + 2.0,
-            adsk.fusion.FeatureOperations.JoinFeatureOperation)
 
     rectangle_feature(
         comp, 'Shell cavity', x_offset + WALL, WALL, PARTING_Z,

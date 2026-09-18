@@ -94,6 +94,49 @@ def check_board_envelope():
               f'front offset {start - case.WALL:.2f} mm')
 
 
+def check_assembly_is_possible():
+    """The reason the box is split: the board's real envelope, connectors
+    included, is wider than any pocket that also has to retain it."""
+    section('Assembly')
+    pi = case.pi_layout()
+
+    for label, proud in (
+        ('connector long edge', case.PI_CONNECTOR_PROUD_FRONT),
+        ('USB and Ethernet edge', case.PI_CONNECTOR_PROUD_RIGHT),
+    ):
+        bite = proud - case.PI_SIDE_CLEARANCE
+        check(bite > 0, f'{label} reaches into its wall',
+              f'connectors stand {proud:.2f} mm proud against '
+              f'{case.PI_SIDE_CLEARANCE:.2f} mm of clearance, so they must '
+              f'enter the wall by {bite:.2f} mm — only an open-bottomed '
+              f'opening lets that happen')
+
+    check(abs(case.PARTING_Z - pi['top_z']) < EPS,
+          'parting plane is the top face of the PCB',
+          f"z {case.PARTING_Z:.2f}, board top {pi['top_z']:.2f}: above it the "
+          f'board is gone and only connectors remain')
+
+    closed = []
+    for opening in case.pi_io_openings():
+        if opening.get('part') != 'shell':
+            continue
+        if not opening.get('open_bottom'):
+            closed.append(opening['name'])
+        elif abs(opening['z'] - case.PARTING_Z) > EPS:
+            closed.append(opening['name'])
+    check(not closed, 'every connector opening is open at the parting plane',
+          'the shell can be lowered onto the board'
+          if not closed else f'{closed} would trap the connectors')
+
+    for opening in case.pi_io_openings():
+        if opening.get('part') != 'base':
+            continue
+        top = opening['z'] + opening['height']
+        check(top <= case.PARTING_Z + EPS,
+              f"{opening['name']} stays in the base",
+              f'ends at z {top:.2f}, parting plane {case.PARTING_Z:.2f}')
+
+
 def check_pads_clear_components():
     """No press pad may land on a component."""
     section('Press pads against the Pi 4 components')
@@ -180,54 +223,37 @@ def check_tabs_clear_openings():
 def check_tab_wall_left():
     section('Shell wall left at each tab')
     slot = case.BASE_TAB_THICKNESS + case.BASE_TAB_CLEARANCE
-    remaining = case.WALL + case.BASE_TAB_BOSS - slot - case.BASE_TAB_BUMP
+    remaining = case.WALL - slot - case.BASE_TAB_BUMP
     check(remaining >= MIN_SKIN - EPS, 'wall behind the bump pocket',
-          f'{remaining:.2f} mm, from {case.WALL:.1f} mm of wall plus a '
-          f'{case.BASE_TAB_BOSS:.1f} mm boss, less a {slot:.1f} mm slot and a '
-          f'{case.BASE_TAB_BUMP:.1f} mm pocket')
+          f'{remaining:.2f} mm, from {case.WALL:.1f} mm of wall less a '
+          f'{slot:.1f} mm slot and a {case.BASE_TAB_BUMP:.1f} mm pocket')
 
 
-def check_assembly_is_possible():
-    """The reason the box is split: the board's real envelope, connectors
-    included, is wider than any pocket that also has to retain it."""
-    section('Assembly')
-    pi = case.pi_layout()
+def check_outside_stays_flat():
+    """Nothing may stand outside the outer footprint.
 
-    for label, proud in (
-        ('connector long edge', case.PI_CONNECTOR_PROUD_FRONT),
-        ('USB and Ethernet edge', case.PI_CONNECTOR_PROUD_RIGHT),
-    ):
-        bite = proud - case.PI_SIDE_CLEARANCE
-        check(bite > 0, f'{label} reaches into its wall',
-              f'connectors stand {proud:.2f} mm proud against '
-              f'{case.PI_SIDE_CLEARANCE:.2f} mm of clearance, so they must '
-              f'enter the wall by {bite:.2f} mm — only an open-bottomed '
-              f'opening lets that happen')
+    The joint has to fit inside the wall. Growing a boss outward to make room
+    is the easy way out and it is not allowed here: it was a stated property
+    of this case before the split, and relaxing it quietly is how a redesign
+    loses the things that were already right.
+    """
+    section('Outside stays flat')
+    outer_l = case.CASE_INNER_LENGTH + 2 * case.WALL
+    outer_w = case.CASE_INNER_WIDTH + 2 * case.WALL
 
-    check(abs(case.PARTING_Z - pi['top_z']) < EPS,
-          'parting plane is the top face of the PCB',
-          f"z {case.PARTING_Z:.2f}, board top {pi['top_z']:.2f}: above it the "
-          f'board is gone and only connectors remain')
+    rects = [('pad ' + name, rect)
+             for name, rect, _z, _h in case.pi_pad_layout()]
+    for index, tab in enumerate(case.base_tab_layout(), 1):
+        for part in ('arm', 'bump', 'slot', 'pocket'):
+            rects.append((f'tab {index} {part}', tab[part]))
 
-    closed = []
-    for opening in case.pi_io_openings():
-        if opening.get('part') != 'shell':
-            continue
-        if not opening.get('open_bottom'):
-            closed.append(opening['name'])
-        elif abs(opening['z'] - case.PARTING_Z) > EPS:
-            closed.append(opening['name'])
-    check(not closed, 'every connector opening is open at the parting plane',
-          'the shell can be lowered onto the board'
-          if not closed else f'{closed} would trap the connectors')
-
-    for opening in case.pi_io_openings():
-        if opening.get('part') != 'base':
-            continue
-        top = opening['z'] + opening['height']
-        check(top <= case.PARTING_Z + EPS,
-              f"{opening['name']} stays in the base",
-              f'ends at z {top:.2f}, parting plane {case.PARTING_Z:.2f}')
+    for label, (x, y, length, width) in rects:
+        inside = (x >= -EPS and y >= -EPS
+                  and x + length <= outer_l + EPS
+                  and y + width <= outer_w + EPS)
+        check(inside, label,
+              f'x {x:.2f}..{x + length:.2f}, y {y:.2f}..{y + width:.2f} '
+              f'within {outer_l:.1f} x {outer_w:.1f}')
 
 
 def check_snap_strain():
@@ -325,6 +351,7 @@ def main():
     check_tabs_clear_openings()
     check_tabs_can_flex()
     check_tab_wall_left()
+    check_outside_stays_flat()
     check_snap_strain()
     check_sma_and_gps()
     check_standoffs()

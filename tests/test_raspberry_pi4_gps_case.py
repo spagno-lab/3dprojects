@@ -500,10 +500,10 @@ class ScrewlessRetentionTest(unittest.TestCase):
                         - pockets[0]['z'])
         self.assertAlmostEqual(bump_depth, pocket_depth)
 
-    def test_the_only_thing_outside_the_footprint_is_a_tab_boss(self):
-        """The outside used to be strictly flat. It now carries one boss per
-        snap tab, because the slot and the bump pocket would otherwise take
-        the wall below two perimeters. Nothing else may stick out."""
+    def test_outside_of_the_case_stays_flat(self):
+        """No bosses, no bumps: every added feature must stay within the
+        outer footprint. The snap joint fits inside the wall instead of
+        growing one outward to make room for itself."""
         outer_l = module.CASE_INNER_LENGTH + 2 * module.WALL
         outer_w = module.CASE_INNER_WIDTH + 2 * module.WALL
         features = []
@@ -516,26 +516,35 @@ class ScrewlessRetentionTest(unittest.TestCase):
             })
             return mock.Mock()
 
-        with mock.patch.object(module, 'cylinder_feature'), \
-                mock.patch.object(module, 'gps_sma_wall_features'), \
-                mock.patch.object(module, 'rectangle_feature', side_effect=capture):
-            module.shell(None)
+        for builder, outer_name in ((module.shell, 'Shell outer body'),
+                                    (module.base_plate, 'Base outer body')):
+            features.clear()
+            with mock.patch.object(module, 'cylinder_feature'), \
+                    mock.patch.object(module, 'gps_sma_wall_features'), \
+                    mock.patch.object(module, 'rectangle_feature',
+                                      side_effect=capture):
+                builder(None)
 
-        bosses = 0
-        for feature in features:
-            if feature['name'] in ('Shell outer body', 'Base outer body'):
-                continue
-            if feature['operation'] == \
-                    module.adsk.fusion.FeatureOperations.CutFeatureOperation:
-                continue
-            outside = (feature['x'] < -1e-9 or feature['y'] < -1e-9
-                       or feature['x'] + feature['length'] > outer_l + 1e-9
-                       or feature['y'] + feature['width'] > outer_w + 1e-9)
-            if outside:
-                self.assertIn('tab boss', feature['name'],
-                              f"{feature['name']} sticks out of the footprint")
-                bosses += 1
-        self.assertEqual(bosses, len(module.BASE_TABS))
+            for feature in features:
+                if feature['name'] == outer_name:
+                    continue
+                if feature['operation'] == \
+                        module.adsk.fusion.FeatureOperations.CutFeatureOperation:
+                    continue
+                self.assertGreaterEqual(feature['x'], 0.0, feature['name'])
+                self.assertGreaterEqual(feature['y'], 0.0, feature['name'])
+                self.assertLessEqual(
+                    feature['x'] + feature['length'], outer_l, feature['name'])
+                self.assertLessEqual(
+                    feature['y'] + feature['width'], outer_w, feature['name'])
+
+        self.assertFalse(hasattr(module, 'BASE_TAB_BOSS'))
+        self.assertNotIn('tab boss', script.read_text())
+
+        # And the joint really does fit inside the wall.
+        skin = (module.WALL - module.BASE_TAB_THICKNESS
+                - module.BASE_TAB_CLEARANCE - module.BASE_TAB_BUMP)
+        self.assertGreaterEqual(skin, 0.8)
 
     def test_both_snaps_stay_within_the_strain_petg_tolerates(self):
         """Cantilever snap strain, 1.5 * t * deflection / L^2. PETG yields

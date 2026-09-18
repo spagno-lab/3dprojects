@@ -111,8 +111,11 @@ from either side, which is why they are all in the same place on every wall.
 The arm is the inner 1.0 mm slice of the base wall carried above the parting
 plane, so it is rooted in thick material, and the bump sits near its tip.
 
-The shell wall is thickened 1.5 mm outward at each tab, so the slot and the
-bump pocket still leave 2.2 mm of wall.
+The whole joint fits inside the 2.5 mm wall: a 1.0 mm slot, a 0.6 mm bump
+pocket and 0.9 mm of skin behind it. Nothing is thickened outward — the
+outside of this case is flat, and growing a boss to make room for the joint
+was the wrong way round. That is what sets the arm at 0.8 mm rather than 1.0,
+which also drops the bending strain to 2.0 per cent.
 
 ## Checking the fit
 
@@ -124,7 +127,8 @@ python3 fit_check.py
 audits the geometry outside Fusion. It exits non-zero on failure, so it works
 as a pre-commit hook.
 
-It checks board clearance, that the connector envelope really does need
+It checks that nothing stands outside the outer footprint, board clearance,
+that the connector envelope really does need
 open-bottomed openings and that it gets them, that the parting plane is the top
 face of the PCB, every pad and tab against every component envelope and every
 wall opening, room for the tabs to flex, wall left behind each bump pocket,
@@ -141,7 +145,7 @@ Both snap features were checked against the standard cantilever formula,
 
 | feature | thickness | deflection | free length | strain |
 |---|---|---|---|---|
-| base snap tab | 1.0 mm | 0.6 mm | 6.0 mm | 2.5 % |
+| base snap tab | 0.8 mm | 0.6 mm | 6.0 mm | 2.0 % |
 | lid latch | 1.2 mm | 0.6 mm | 5.0 mm | 4.3 % |
 
 Earlier revisions failed this check badly: a clip arm rooted at board level
