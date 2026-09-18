@@ -39,6 +39,62 @@ intersect the GPS cradle and its clips are automatically omitted, leaving a
 solid load-bearing region around the removable module while opening most of
 the area above the Raspberry Pi for passive airflow.
 
+## Board retention
+
+The board drops straight down onto the four standoffs and snaps past four
+flexible clips, one on each free stretch of board edge. Nothing screws in and
+nothing slides sideways.
+
+| clip | wall | offset along the wall | what makes that stretch free |
+|---|---|---|---|
+| 1 | front | 61 mm | past the audio jack, which ends at 58.1 mm |
+| 2 | left | 3 mm | front corner, before the microSD opening |
+| 3 | left | 40 mm | behind the microSD opening, which ends at 37.1 mm |
+| 4 | rear | 59 mm | past the GPIO header, which ends at 54.3 mm |
+
+Each hook reaches 0.6 mm over the PCB and carries a 45 degree lead-in above
+the retaining face, printed as a four-step staircase: at 0.2 mm layers a real
+chamfer comes out as steps anyway, and a staircase survives every rebuild
+without a chamfer feature to re-attach. The board pushes the clips aside on
+the way down instead of needing a fingernail.
+
+The right wall holds nothing: it is solid USB and Ethernet.
+
+### The revision that would not assemble
+
+The previous design slid the GPIO edge under two rigid lips on the rear wall
+and then snapped the opposite edge down. It could not be assembled at all, for
+two independent reasons, and neither is visible in Fusion:
+
+- the lips reached `PI_LIP_OVERHANG` = 1.2 mm over the board, but the rear gap
+  is `PI_SIDE_CLEARANCE` = 0.4 mm, so the board could never travel far enough
+  back to get under them — 0.8 mm short;
+- the left lip sat at x 12 to 26 mm, which is on top of the GPIO header. The
+  header body runs from 0.95 to 6.05 mm in from the rear edge, so a lip
+  reaching 1.2 mm in overlaps it by 0.25 mm, and the header stands 8.5 mm tall
+  against a lip 1.4 mm above the PCB. The board hit it and stopped.
+
+The root cause is that clip placement and the reference body were each worked
+out from the drawing separately, so nothing compared them. They now share
+`pi_component_footprints()`, and `fit_check.py` tests one against the other.
+
+## Checking the fit
+
+```
+python3 fit_check.py
+```
+
+`fit_check.py` imports the script with a stub in place of the Fusion API and
+audits the geometry: board clearance, every clip hook against every component
+envelope, clip arms against the wall openings, that no feature needs a
+sideways slide the pocket cannot give, lead-in direction, snap strain, wall
+left behind each relief slot, the SMA counterbore against the rear clip, and
+headroom under the lid. It exits non-zero on failure, so it works as a
+pre-commit hook.
+
+Fed the old lip geometry it reports exactly the two defects above, which is
+the point: both were geometry that looked right on screen.
+
 ## Snap strain
 
 Both snap features were checked against the standard cantilever formula,
@@ -55,6 +111,10 @@ was 1.6 mm thick with the latch only 2 mm from its root, which works out at
 60 per cent. Both would have snapped off on first assembly. The fix is length,
 not thickness: the clip arm now starts at the floor and the lid latch sits
 near the tip of a taller rim.
+
+Going from two clips to four multiplies the insertion force by two, not the
+strain: each clip still deflects 0.6 mm on its own 7 mm arm. `fit_check.py`
+re-runs this table from the constants.
 
 ## Reference bodies
 

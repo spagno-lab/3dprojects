@@ -13,13 +13,19 @@ PI_SIDE_CLEARANCE = 0.4
 PI_STANDOFF_HEIGHT = 3.0
 PI_STANDOFF_DIAMETER = 5.0
 
-# Screwless PCB retention, tilt-and-snap. Rigid lips on the microSD side take
-# the board edge first, then the opposite side drops past two flexible clips.
-# Pegs in the mounting holes were dropped: they blocked the tilt and forced the
-# board to deflect every clip simultaneously.
-PI_LIP_LENGTH = 14.0
-PI_LIP_OVERHANG = 1.2
-PI_LIP_HEIGHT = 1.4
+# Screwless PCB retention: the board drops straight down and snaps past four
+# flexible clips, one per free stretch of board edge.
+#
+# The previous revision used two rigid lips on the rear wall and a tilt-in
+# assembly. It could not work, for two independent reasons:
+#   * the lips overhung the board by PI_LIP_OVERHANG = 1.2 mm, but the rear
+#     clearance is only PI_SIDE_CLEARANCE = 0.4 mm, so the board could never
+#     slide far enough back to get under them;
+#   * the left lip sat at x 12..26 mm, straight on top of the 8.5 mm tall GPIO
+#     header, which starts 0.95 mm in from the rear edge.
+# Dropping the board in vertically removes the slide entirely, so no feature
+# needs more lateral room than the printing clearance.
+#
 # The arm is recessed into the wall with a blind relief slot behind it, so the
 # outside of the case stays flat. It is rooted at the floor rather than at
 # board level: a 7 mm cantilever keeps the bending strain near 2 per cent,
@@ -31,6 +37,27 @@ PI_CLIP_OVERHANG = 0.6
 PI_CLIP_EDGE_GAP = 0.2
 PI_CLIP_LEAD_IN = 1.2
 PI_CLIP_POCKET_MARGIN = 1.0
+# The lead-in is a 45 degree ramp above the retaining face, so the descending
+# board pushes the clips aside on its own instead of needing a fingernail. It
+# is printed as a short staircase: at 0.2 mm layers a real chamfer comes out as
+# steps anyway, and a staircase needs no chamfer feature to survive a rebuild.
+PI_CLIP_LEAD_IN_STEPS = 4
+
+# Clip placement, as the offset of the arm's near end from the board corner
+# along the wall it sits on. Every entry is checked by fit_check.py against the
+# connector and header keep-outs; see PI_EDGE_KEEPOUTS.
+PI_CLIPS = (
+    ('front', 61.0),
+    ('left', 3.0),
+    ('left', 40.0),
+    ('rear', 59.0),
+)
+
+# Strips of board edge that a clip hook must not overhang, as
+# (wall, start, end) in millimetres from the board corner along that wall.
+# Derived from the connector table below and from the GPIO header footprint;
+# fit_check.py rebuilds them rather than trusting these numbers blindly.
+PI_HOOK_EDGE_MARGIN = 1.0
 
 # ---------------------------------------------------------------------------
 # GPS carrier, user-measured. The component/pin face points into the case, the
@@ -287,6 +314,49 @@ def pi_io_openings():
     return openings
 
 
+def pi_component_footprints():
+    """Return every Pi 4 component that stands above the PCB.
+
+    One source of truth for two consumers: body 4 draws these, and
+    fit_check.py tests the retention clips against them. The rear lip that
+    broke assembly landed on the GPIO header precisely because the clip
+    placement and the reference body were worked out separately.
+
+    Each entry is (name, rect, height) with rect as (x, y, length, width) and
+    height measured from the top face of the PCB.
+    """
+    pi = pi_layout()
+    parts = []
+
+    for name, source_x, width, height in PI_FRONT_CONNECTORS:
+        x = pi['x'] + PI_BOARD_LENGTH - source_x - width
+        parts.append((
+            name.replace(' opening', ''),
+            (x, pi['y'] - PI_CONNECTOR_PROUD,
+             width, PI_CONNECTOR_PROUD + width / 3),
+            height,
+        ))
+
+    for name, source_y, width, height in PI_RIGHT_CONNECTORS:
+        y = pi['y'] + PI_BOARD_WIDTH - source_y - width
+        depth = 21.0 if 'USB' in name else 21.3
+        parts.append((
+            name.replace(' opening', ''),
+            (pi['x'] + PI_BOARD_LENGTH + PI_CONNECTOR_PROUD - depth, y,
+             depth, width),
+            height,
+        ))
+
+    parts.append((
+        'GPIO header',
+        (pi['x'] + PI_GPIO_FIRST_PIN,
+         pi['y'] + PI_BOARD_WIDTH - PI_GPIO_EDGE_OFFSET - PI_GPIO_WIDTH / 2,
+         PI_GPIO_LENGTH, PI_GPIO_WIDTH),
+        PI_GPIO_HEIGHT,
+    ))
+    return parts
+
+
 def rectangles_overlap(first, second):
     """Return whether two (x, y, length, width) rectangles overlap."""
     ax, ay, al, aw = first
@@ -346,20 +416,91 @@ def rear_wall_hole(comp, target_body, name, center_x, center_z, wall_y,
     return feature
 
 
+def pi_clip_layout():
+    """Return the relief, arm and hook rectangles of every retention clip.
+
+    Pure geometry, no Fusion calls, so fit_check.py can audit the result
+    against the connector and header keep-outs without opening Fusion.
+    Rectangles are (x, y, length, width) in case coordinates.
+    """
+    pi = pi_layout()
+    board_rear_y = pi['y'] + PI_BOARD_WIDTH
+    front_arm_y = pi['y'] - PI_CLIP_EDGE_GAP - PI_CLIP_THICKNESS
+    rear_arm_y = board_rear_y + PI_CLIP_EDGE_GAP
+    left_arm_x = pi['x'] - PI_CLIP_EDGE_GAP - PI_CLIP_THICKNESS
+    margin = PI_CLIP_POCKET_MARGIN
+    reach = PI_CLIP_OVERHANG + PI_CLIP_EDGE_GAP
+
+    clips = []
+    for wall, offset in PI_CLIPS:
+        if wall == 'front':
+            start = pi['x'] + offset
+            relief = (start - margin, front_arm_y - PI_CLIP_RELIEF,
+                      PI_CLIP_LENGTH + 2 * margin, PI_CLIP_RELIEF)
+            arm = (start, front_arm_y, PI_CLIP_LENGTH, PI_CLIP_THICKNESS)
+            hook = (start, front_arm_y + PI_CLIP_THICKNESS,
+                    PI_CLIP_LENGTH, reach)
+        elif wall == 'rear':
+            start = pi['x'] + offset
+            relief = (start - margin, rear_arm_y + PI_CLIP_THICKNESS,
+                      PI_CLIP_LENGTH + 2 * margin, PI_CLIP_RELIEF)
+            arm = (start, rear_arm_y, PI_CLIP_LENGTH, PI_CLIP_THICKNESS)
+            hook = (start, rear_arm_y - reach, PI_CLIP_LENGTH, reach)
+        else:
+            start = pi['y'] + offset
+            relief = (left_arm_x - PI_CLIP_RELIEF, start - margin,
+                      PI_CLIP_RELIEF, PI_CLIP_LENGTH + 2 * margin)
+            arm = (left_arm_x, start, PI_CLIP_THICKNESS, PI_CLIP_LENGTH)
+            hook = (left_arm_x + PI_CLIP_THICKNESS, start,
+                    reach, PI_CLIP_LENGTH)
+        clips.append({'wall': wall, 'offset': offset, 'start': start,
+                      'relief': relief, 'arm': arm, 'hook': hook})
+    return clips
+
+
+def pi_clip_lead_in_slices(clip, board_top):
+    """Stair-stepped 45 degree ramp sitting on top of one hook.
+
+    Slice 0 is the full hook at board level, the last slice is nearly flush
+    with the arm, so the board only ever meets sloped material on the way in.
+    """
+    x, y, length, width = clip['hook']
+    reach = PI_CLIP_OVERHANG + PI_CLIP_EDGE_GAP
+    step_height = PI_CLIP_LEAD_IN / PI_CLIP_LEAD_IN_STEPS
+    slices = []
+    for step in range(PI_CLIP_LEAD_IN_STEPS):
+        depth = reach * (PI_CLIP_LEAD_IN_STEPS - step) / PI_CLIP_LEAD_IN_STEPS
+        if clip['wall'] == 'front':
+            rect = (x, y, length, depth)
+        elif clip['wall'] == 'rear':
+            rect = (x, y + width - depth, length, depth)
+        else:
+            rect = (x, y, depth, width)
+        slices.append((rect, board_top + step * step_height, step_height))
+    return slices
+
+
 def pi_retention(comp):
-    """Screwless retention, tilt-and-snap, placed clear of every connector.
+    """Screwless retention: drop the board in, four clips snap over its edges.
 
-    Assembly: slide the GPIO edge of the board under the two rigid lips on the
-    rear wall, then press the front edge down until the two clips snap over it.
-    Removal: push the clips outward and lift the front edge.
+    Assembly: lower the board onto the standoffs. Each clip is met by its
+    45 degree lead-in, springs outward, and snaps back over the PCB.
+    Removal: push the four clips outward and lift.
 
-    Placement is forced by the I/O: the right wall is full of USB and Ethernet,
-    the left wall carries the microSD slot, and the front wall only has a free
-    stretch beyond the audio jack. The rear GPIO wall is the one clear side, so
-    it takes the fixed lips.
+    The previous revision slid the GPIO edge under two rigid lips on the rear
+    wall. That could not be assembled: the lips reached 1.2 mm over the board
+    while the rear gap is only 0.4 mm, and the left lip landed on top of the
+    8.5 mm GPIO header. Dropping the board in vertically removes the slide, so
+    no feature needs more room than the printing clearance.
 
-    Nothing sits in the mounting holes: pegs would block the tilt and force
-    every clip to deflect at once.
+    Placement is forced by the I/O and by the header. Free stretches of board
+    edge: the front wall past the audio jack, the left wall on either side of
+    the microSD slot, and the rear wall past the end of the GPIO header. The
+    right wall is solid USB and Ethernet and takes nothing. fit_check.py
+    verifies all four against the keep-outs.
+
+    Nothing sits in the mounting holes: pegs cannot deflect enough to let the
+    board pass, and they would fight the clips.
     """
     pi = pi_layout()
     holes = [
@@ -373,59 +514,27 @@ def pi_retention(comp):
                          PI_STANDOFF_DIAMETER, PI_STANDOFF_HEIGHT)
 
     board_top = pi['bottom_z'] + PI_BOARD_THICKNESS
-    board_rear_y = pi['y'] + PI_BOARD_WIDTH
-    rear_wall_inner = WALL + CASE_INNER_WIDTH
 
-    # Fixed lips on the rear GPIO wall. They never flex: the board slides in
-    # underneath them, so they need no relief slot.
-    for name, x in (('left', pi['x'] + 12.0),
-                    ('right', pi['x'] + PI_BOARD_LENGTH - 12.0 - PI_LIP_LENGTH)):
-        rectangle_feature(
-            comp, f'Pi retaining lip {name}', x,
-            board_rear_y - PI_LIP_OVERHANG, board_top,
-            PI_LIP_LENGTH, PI_LIP_OVERHANG + PI_SIDE_CLEARANCE, PI_LIP_HEIGHT,
-            adsk.fusion.FeatureOperations.JoinFeatureOperation)
-
-    # Flexible clips. Placement is dictated by the free wall stretches: the
-    # front wall is clear only past the audio jack, and the left wall is clear
-    # between the front corner and the microSD slot. One clip on each holds
-    # both front corners down. The wall is locally thickened outward so the
-    # relief slot never thins it.
     # Rooted on the floor so the cantilever is long enough to bend safely.
     arm_height = (pi['bottom_z'] - FLOOR + PI_BOARD_THICKNESS
                   + PI_CLIP_LEAD_IN + 1.2)
-    front_arm_y = pi['y'] - PI_CLIP_EDGE_GAP - PI_CLIP_THICKNESS
-    left_arm_x = pi['x'] - PI_CLIP_EDGE_GAP - PI_CLIP_THICKNESS
-    clips = (
-        ('front', pi['x'] + PI_BOARD_LENGTH - 10.0 - PI_CLIP_LENGTH),
-        ('left', pi['y'] + 3.0),
-    )
-    for wall, start in clips:
-        margin = PI_CLIP_POCKET_MARGIN
-        if wall == 'front':
-            relief = (start - margin, front_arm_y - PI_CLIP_RELIEF,
-                      PI_CLIP_LENGTH + 2 * margin, PI_CLIP_RELIEF)
-            arm = (start, front_arm_y, PI_CLIP_LENGTH, PI_CLIP_THICKNESS)
-            hook = (start, front_arm_y + PI_CLIP_THICKNESS,
-                    PI_CLIP_LENGTH, PI_CLIP_OVERHANG + PI_CLIP_EDGE_GAP)
-        else:
-            relief = (left_arm_x - PI_CLIP_RELIEF, start - margin,
-                      PI_CLIP_RELIEF, PI_CLIP_LENGTH + 2 * margin)
-            arm = (left_arm_x, start, PI_CLIP_THICKNESS, PI_CLIP_LENGTH)
-            hook = (left_arm_x + PI_CLIP_THICKNESS, start,
-                    PI_CLIP_OVERHANG + PI_CLIP_EDGE_GAP, PI_CLIP_LENGTH)
+    for index, clip in enumerate(pi_clip_layout(), 1):
+        tag = f"{clip['wall']} {index}"
+        relief, arm = clip['relief'], clip['arm']
         rectangle_feature(
-            comp, f'Pi clip relief {wall}', relief[0], relief[1],
+            comp, f'Pi clip relief {tag}', relief[0], relief[1],
             FLOOR, relief[2], relief[3], arm_height + PI_CLIP_LEAD_IN,
             adsk.fusion.FeatureOperations.CutFeatureOperation)
         rectangle_feature(
-            comp, f'Pi clip arm {wall}', arm[0], arm[1], FLOOR,
+            comp, f'Pi clip arm {tag}', arm[0], arm[1], FLOOR,
             arm[2], arm[3], arm_height,
             adsk.fusion.FeatureOperations.JoinFeatureOperation)
-        rectangle_feature(
-            comp, f'Pi clip hook {wall}', hook[0], hook[1], board_top,
-            hook[2], hook[3], PI_CLIP_LEAD_IN,
-            adsk.fusion.FeatureOperations.JoinFeatureOperation)
+        for step, (rect, z, height) in enumerate(
+                pi_clip_lead_in_slices(clip, board_top), 1):
+            rectangle_feature(
+                comp, f'Pi clip hook {tag} step {step}', rect[0], rect[1], z,
+                rect[2], rect[3], height,
+                adsk.fusion.FeatureOperations.JoinFeatureOperation)
 
 
 def lid_latch_positions(x_offset=0):
