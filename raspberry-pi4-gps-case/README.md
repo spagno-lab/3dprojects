@@ -139,9 +139,16 @@ its rim up, so the clips and the rim grow along Z and bend across layer lines.
 
 ### Loading it
 
-Those values live inside the 3mf, so they only apply with **File - Open
-Project**. Importing the 3mf loads the geometry and drops the configuration,
-leaving whatever profile happens to be active.
+Those values live inside the 3mf. Two things stopped them from showing up:
+
+- importing the 3mf loads the geometry and drops the configuration, so use
+  **File - Open Project**;
+- the project still declared `print_settings_id: 0.20mm Standard @BBL X2D`,
+  the name of a system preset. Bambu Studio resolves that name against its own
+  preset and reloads the stock values, discarding what the file carries. The
+  project now declares its own name, `0.20mm PETG snap-fit case @BBL X2D`,
+  inheriting the standard one, so the dropdown shows that entry and the
+  overrides survive.
 
 If you prefer importing, install the standalone process preset instead:
 `bambu-presets/0.20mm PETG snap-fit case @BBL X2D.json`, via Bambu Studio's
