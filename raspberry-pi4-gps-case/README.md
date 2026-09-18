@@ -136,3 +136,19 @@ and PETG. Settings that matter for this part:
 
 Both parts are placed unrotated: the case with its opening up and the lid with
 its rim up, so the clips and the rim grow along Z and bend across layer lines.
+
+### Loading it
+
+Those values live inside the 3mf, so they only apply with **File - Open
+Project**. Importing the 3mf loads the geometry and drops the configuration,
+leaving whatever profile happens to be active.
+
+If you prefer importing, install the standalone process preset instead:
+`bambu-presets/0.20mm PETG snap-fit case @BBL X2D.json`, via Bambu Studio's
+preset import. It inherits `0.20mm Standard @BBL X2D` and overrides only what
+this part needs, so it stays selectable from the process dropdown no matter how
+the geometry was loaded.
+
+One setting cannot live in a process preset: part cooling. Cap the fan at
+about 45 per cent in the PETG **filament** profile. It trades surface finish
+for layer adhesion at the root of the clips, which is where they break.
