@@ -117,3 +117,22 @@ with the lid. It includes the PCB, an inset 8 mm component keep-out, the 7 mm
 SMA base, the 5 × 8 mm threaded-section envelope, and the two legs of each bent
 pin. It can be hidden or removed to inspect the cradle. The clips retain only
 the PCB edges and do not press on the component keep-out.
+
+## Slicing profile
+
+`raspberry.3mf` carries the Bambu Studio project for an X2D with a 0.4 nozzle
+and PETG. Settings that matter for this part:
+
+| setting | value | why |
+|---|---|---|
+| wall generator | Arachne | the clip arm is 1.1 mm and the lid rim 1.2 mm, neither is a multiple of the 0.42 mm line, and the classic generator leaves them hollow |
+| wall loops | 5 | 2.5 mm walls come out solid from perimeters alone |
+| sparse infill | 5 % gyroid | nothing structural relies on infill |
+| bottom shell layers | 5 | the floor carries the four standoffs that take the push when the board snaps in |
+| outer wall speed | 120 mm/s | 200 rounds off the 0.6 mm latch features |
+| fan max | 45 % | PETG layer adhesion at the clip root matters more than surface finish |
+| elephant foot | 0.15 mm | protects the 0.25 mm rim and 0.4 mm board clearances |
+| supports | off | the only overhangs are the 0.6 to 1.6 mm ledges, which print in air |
+
+Both parts are placed unrotated: the case with its opening up and the lid with
+its rim up, so the clips and the rim grow along Z and bend across layer lines.
