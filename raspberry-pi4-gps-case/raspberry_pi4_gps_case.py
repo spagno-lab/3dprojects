@@ -3,9 +3,35 @@ import adsk.fusion
 import traceback
 
 
-# User-measured dimensions in millimetres. Viewed from inside the case, the
-# component/pin face points inward, the u-blox shield faces the lid, and the
-# SMA occupies the top-right corner and points through the rear wall.
+# ---------------------------------------------------------------------------
+# Raspberry Pi 4 Model B, official mechanical drawing.
+# Datum: PCB corner on the micro-USB-C side of the connector long edge.
+# ---------------------------------------------------------------------------
+PI_LENGTH = 85.0
+PI_WIDTH = 56.0
+PI_THICKNESS = 1.4
+PI_HOLE_INSET = 3.5
+PI_HOLE_PITCH_X = 58.0
+PI_HOLE_PITCH_Y = 49.0
+PI_HOLE_DIAMETER = 2.7
+PI_SIDE_CLEARANCE = 1.0
+PI_STANDOFF_HEIGHT = 3.0
+PI_STANDOFF_DIAMETER = 5.0
+PI_PEG_DIAMETER = PI_HOLE_DIAMETER - 0.3
+PI_PEG_HEIGHT = 1.6
+PI_BOARD_KEEPOUT = 17.0
+
+# Screwless PCB retention. Values follow the measured reference case:
+# 2.2 mm arms, 12 mm long, 1.0 mm of latch interference.
+PI_CLIP_THICKNESS = 2.2
+PI_CLIP_LENGTH = 12.0
+PI_CLIP_OVERHANG = 1.0
+PI_CLIP_LEAD_IN = 1.0
+
+# ---------------------------------------------------------------------------
+# GPS carrier, user-measured. The component/pin face points into the case, the
+# u-blox shield faces the lid, the SMA sits in the top-right corner.
+# ---------------------------------------------------------------------------
 GPS_BOARD_LENGTH = 23.0
 GPS_BOARD_WIDTH = 18.0
 GPS_BOARD_THICKNESS = 1.6
@@ -25,22 +51,40 @@ SMA_BASE_DEPTH = 1.0
 SMA_THREAD_DIAMETER = 5.0
 SMA_PROJECTION = 8.0
 SMA_CENTER_FROM_RIGHT = SMA_BASE_WIDTH / 2
-SMA_HOLE_DIAMETER = SMA_THREAD_DIAMETER + 2 * GPS_FIT_CLEARANCE
+# The printed 5.6 mm hole was too tight on the first print: the nut and the
+# solder fillet at the base of the connector fouled the wall. Opened by 2 mm.
+SMA_HOLE_CLEARANCE = 1.3
+SMA_HOLE_DIAMETER = SMA_THREAD_DIAMETER + 2 * SMA_HOLE_CLEARANCE
 SMA_LOCAL_WALL = 2.0
-SMA_RECESS_DIAMETER = SMA_BASE_WIDTH + 2 * GPS_FIT_CLEARANCE
+# The counterbore must stay wider than the enlarged through hole, otherwise it
+# no longer thins the wall around the antenna nut.
+SMA_RECESS_DIAMETER = SMA_HOLE_DIAMETER + 2.0
 GPS_CLIP_THICKNESS = 1.6
 GPS_CLIP_LENGTH = 5.0
 GPS_CLIP_OVERHANG = 1.0
 GPS_EDGE_SUPPORT_WIDTH = 0.8
 GPS_COMPONENT_KEEPOUT_INSET = 1.2
 
-WALL = 2.4
-FLOOR = 2.4
-CLEARANCE = 0.6
-CASE_INNER_LENGTH = 91.0
-CASE_INNER_WIDTH = 62.0
+# ---------------------------------------------------------------------------
+# Case. The cavity now hugs the PCB so the connectors sit against their
+# openings instead of floating 3 mm inboard.
+# ---------------------------------------------------------------------------
+WALL = 2.5
+FLOOR = 2.5
+CASE_INNER_LENGTH = PI_LENGTH + 2 * PI_SIDE_CLEARANCE
+CASE_INNER_WIDTH = PI_WIDTH + 2 * PI_SIDE_CLEARANCE
 CASE_INNER_HEIGHT = 29.0
 LID_THICKNESS = 2.4
+
+# Lid retention. The first print never snapped because the rim was 0.6 mm
+# clear of the wall on each side and had no latch at all.
+LID_RIM_HEIGHT = 6.0
+LID_RIM_THICKNESS = 1.6
+LID_RIM_CLEARANCE = 0.15
+LID_LATCH_DEPTH = 1.0
+LID_LATCH_LENGTH = 12.0
+LID_LATCH_HEIGHT = 2.0
+LID_LATCH_BELOW_TOP = 4.0
 
 
 def cm(mm):
@@ -88,6 +132,23 @@ def rectangle_feature(comp, name, x, y, z, length, width, height,
     return feature
 
 
+def cylinder_feature(comp, name, center_x, center_y, z, diameter, height,
+                     operation=adsk.fusion.FeatureOperations.JoinFeatureOperation,
+                     participant_bodies=None):
+    sketch = comp.sketches.add(offset_plane(comp, z))
+    sketch.name = name
+    sketch.sketchCurves.sketchCircles.addByCenterRadius(
+        adsk.core.Point3D.create(cm(center_x), cm(center_y), 0), cm(diameter / 2))
+    extrudes = comp.features.extrudeFeatures
+    extrude_input = extrudes.createInput(sketch.profiles.item(0), operation)
+    if participant_bodies:
+        extrude_input.participantBodies = participant_bodies
+    extrude_input.setDistanceExtent(False, value(height))
+    feature = extrudes.add(extrude_input)
+    feature.name = name
+    return feature
+
+
 def rear_wall_hole(comp, target_body, name, center_x, center_z, wall_y,
                    diameter, depth):
     planes = comp.constructionPlanes
@@ -111,6 +172,104 @@ def rear_wall_hole(comp, target_body, name, center_x, center_z, wall_y,
     feature = extrudes.add(extrude_input)
     feature.name = name
     return feature
+
+
+def pi_layout(x_offset=0):
+    """PCB datum and derived heights for the Pi inside the cavity."""
+    pcb_x = x_offset + WALL + PI_SIDE_CLEARANCE
+    pcb_y = WALL + PI_SIDE_CLEARANCE
+    board_z = FLOOR + PI_STANDOFF_HEIGHT
+    return {
+        'x': pcb_x,
+        'y': pcb_y,
+        'board_z': board_z,
+        'top_z': board_z + PI_THICKNESS,
+        'holes': [
+            (pcb_x + PI_HOLE_INSET, pcb_y + PI_HOLE_INSET),
+            (pcb_x + PI_HOLE_INSET + PI_HOLE_PITCH_X, pcb_y + PI_HOLE_INSET),
+            (pcb_x + PI_HOLE_INSET, pcb_y + PI_HOLE_INSET + PI_HOLE_PITCH_Y),
+            (pcb_x + PI_HOLE_INSET + PI_HOLE_PITCH_X,
+             pcb_y + PI_HOLE_INSET + PI_HOLE_PITCH_Y),
+        ],
+    }
+
+
+def pi_port_openings(x_offset=0):
+    """Port cut-outs referenced to the PCB datum, not to the case shell.
+
+    Connector centres come from the Raspberry Pi 4 Model B mechanical drawing.
+    Each opening keeps 1 mm of margin around the connector body.
+    """
+    pi = pi_layout(x_offset)
+    edge_z = pi['board_z'] - 1.0
+    long_edge = [
+        ('USB-C opening', 11.2, 13.0, 7.0),
+        ('Micro-HDMI 1 opening', 26.0, 11.0, 7.0),
+        ('Micro-HDMI 2 opening', 39.5, 11.0, 7.0),
+        ('Audio opening', 54.0, 11.0, 9.0),
+    ]
+    short_edge = [
+        ('USB pair 2 opening', 9.0, 17.5, 18.0),
+        ('USB pair 1 opening', 27.0, 17.5, 18.0),
+        ('Ethernet opening', 45.75, 18.0, 16.0),
+    ]
+    return {
+        'edge_z': edge_z,
+        'long_edge': [
+            (name, pi['x'] + centre - width / 2, width, height)
+            for name, centre, width, height in long_edge
+        ],
+        'short_edge': [
+            (name, pi['y'] + centre - width / 2, width, height)
+            for name, centre, width, height in short_edge
+        ],
+    }
+
+
+def pi_retention(comp, x_offset=0):
+    """Screwless retention: locating pegs plus four cantilever clips.
+
+    The printed M2.5 posts were dropped. The board drops onto four standoffs
+    whose small pegs enter the mounting holes, and four clips snap over the
+    board edge. PI_CLIP_OVERHANG of material sits on top of the PCB.
+    """
+    pi = pi_layout(x_offset)
+    for index, (x, y) in enumerate(pi['holes'], 1):
+        cylinder_feature(comp, f'Pi standoff {index}', x, y, FLOOR,
+                         PI_STANDOFF_DIAMETER, PI_STANDOFF_HEIGHT)
+        cylinder_feature(comp, f'Pi locating peg {index}', x, y,
+                         pi['board_z'], PI_PEG_DIAMETER, PI_PEG_HEIGHT)
+
+    clip_z = pi['board_z']
+    arm_height = PI_THICKNESS + PI_CLIP_LEAD_IN + 1.2
+    left_x = pi['x'] - PI_SIDE_CLEARANCE - PI_CLIP_THICKNESS
+    right_x = pi['x'] + PI_LENGTH + PI_SIDE_CLEARANCE
+    clip_positions = (
+        ('front left', left_x, pi['y'] + 14.0),
+        ('rear left', left_x, pi['y'] + PI_WIDTH - 14.0 - PI_CLIP_LENGTH),
+        ('front right', right_x, pi['y'] + 14.0),
+        ('rear right', right_x, pi['y'] + PI_WIDTH - 14.0 - PI_CLIP_LENGTH),
+    )
+    for name, x, y in clip_positions:
+        rectangle_feature(
+            comp, f'Pi clip arm {name}', x, y, clip_z,
+            PI_CLIP_THICKNESS, PI_CLIP_LENGTH, arm_height,
+            adsk.fusion.FeatureOperations.JoinFeatureOperation)
+        hook_x = x + PI_CLIP_THICKNESS if x < pi['x'] else x - PI_CLIP_OVERHANG
+        rectangle_feature(
+            comp, f'Pi clip hook {name}', hook_x, y,
+            clip_z + PI_THICKNESS, PI_CLIP_OVERHANG, PI_CLIP_LENGTH,
+            PI_CLIP_LEAD_IN,
+            adsk.fusion.FeatureOperations.JoinFeatureOperation)
+
+
+def lid_latch_positions(x_offset=0):
+    """Latch pockets in the case walls and matching bumps on the lid rim."""
+    outer_l = CASE_INNER_LENGTH + 2 * WALL
+    z = FLOOR + CASE_INNER_HEIGHT - LID_LATCH_BELOW_TOP
+    first = x_offset + outer_l / 2 - 24.0 - LID_LATCH_LENGTH / 2
+    second = x_offset + outer_l / 2 + 24.0 - LID_LATCH_LENGTH / 2
+    return {'z': z, 'x_positions': (first, second)}
 
 
 def gps_cradle_layout(outer_l, outer_w, x_offset=0):
@@ -167,47 +326,36 @@ def body_shell(comp):
         adsk.fusion.FeatureOperations.CutFeatureOperation
     )
 
-    # Pi 4 mounting posts: standard 58 x 49 mm hole pattern, M2.5 clearance.
-    pi_x = WALL + 3.5 + 2.5
-    pi_y = WALL + 3.5 + 2.5
-    for index, (x, y) in enumerate(((pi_x, pi_y), (pi_x + 58, pi_y),
-                                    (pi_x, pi_y + 49), (pi_x + 58, pi_y + 49)), 1):
-        sketch = comp.sketches.add(offset_plane(comp, FLOOR))
-        sketch.name = f'Pi post {index}'
-        circles = sketch.sketchCurves.sketchCircles
-        circles.addByCenterRadius(adsk.core.Point3D.create(cm(x), cm(y), 0), cm(3.0))
-        post = comp.features.extrudeFeatures.createInput(
-            sketch.profiles.item(0), adsk.fusion.FeatureOperations.JoinFeatureOperation)
-        post.setDistanceExtent(False, value(4.0))
-        comp.features.extrudeFeatures.add(post)
+    pi_retention(comp)
 
-        hole_sketch = comp.sketches.add(offset_plane(comp, FLOOR))
-        hole_sketch.sketchCurves.sketchCircles.addByCenterRadius(
-            adsk.core.Point3D.create(cm(x), cm(y), 0), cm(1.35))
-        hole = comp.features.extrudeFeatures.createInput(
-            hole_sketch.profiles.item(0), adsk.fusion.FeatureOperations.CutFeatureOperation)
-        hole.setDistanceExtent(False, value(5.0))
-        comp.features.extrudeFeatures.add(hole)
+    # Port openings. The upper edge of each cut stays open and is closed by
+    # the lid, so no bridging is needed while printing.
+    ports = pi_port_openings()
+    for name, y, width, height in ports['short_edge']:
+        rectangle_feature(comp, name, outer_l - WALL - 1, y, ports['edge_z'],
+                          WALL + 2, width, height,
+                          adsk.fusion.FeatureOperations.CutFeatureOperation)
+    for name, x, width, height in ports['long_edge']:
+        rectangle_feature(comp, name, x, -1.0, ports['edge_z'],
+                          width, WALL + 2, height,
+                          adsk.fusion.FeatureOperations.CutFeatureOperation)
 
-    # Separate top-open Pi 4 port cut-outs. Their upper edge is closed by the lid.
-    top = outer_h - 17.0
-    rectangle_feature(comp, 'Ethernet opening', outer_l - WALL - 1, 6.0, top,
-                      WALL + 2, 17.5, 18.0, adsk.fusion.FeatureOperations.CutFeatureOperation)
-    rectangle_feature(comp, 'USB pair 1 opening', outer_l - WALL - 1, 25.0, top,
-                      WALL + 2, 15.5, 18.0, adsk.fusion.FeatureOperations.CutFeatureOperation)
-    rectangle_feature(comp, 'USB pair 2 opening', outer_l - WALL - 1, 42.0, top,
-                      WALL + 2, 15.5, 18.0, adsk.fusion.FeatureOperations.CutFeatureOperation)
+    pi = pi_layout()
+    rectangle_feature(comp, 'MicroSD opening', -1.0, pi['y'] + 19.0, 0.0,
+                      WALL + 2, 14.0, pi['board_z'] + PI_THICKNESS + 1.0,
+                      adsk.fusion.FeatureOperations.CutFeatureOperation)
 
-    rectangle_feature(comp, 'USB-C opening', 8.0, -1.0, top + 4.0,
-                      11.0, WALL + 2, 14.0, adsk.fusion.FeatureOperations.CutFeatureOperation)
-    rectangle_feature(comp, 'Micro-HDMI 1 opening', 24.0, -1.0, top + 5.0,
-                      9.0, WALL + 2, 13.0, adsk.fusion.FeatureOperations.CutFeatureOperation)
-    rectangle_feature(comp, 'Micro-HDMI 2 opening', 37.0, -1.0, top + 5.0,
-                      9.0, WALL + 2, 13.0, adsk.fusion.FeatureOperations.CutFeatureOperation)
-    rectangle_feature(comp, 'Audio opening', 54.0, -1.0, top + 4.0,
-                      10.0, WALL + 2, 14.0, adsk.fusion.FeatureOperations.CutFeatureOperation)
-    rectangle_feature(comp, 'MicroSD opening', -1.0, 23.0, 4.0,
-                      WALL + 2, 18.0, 8.0, adsk.fusion.FeatureOperations.CutFeatureOperation)
+    # Latch pockets for the lid rim bumps.
+    latches = lid_latch_positions()
+    for x in latches['x_positions']:
+        rectangle_feature(
+            comp, 'Lid latch pocket front', x, WALL - LID_LATCH_DEPTH,
+            latches['z'], LID_LATCH_LENGTH, LID_LATCH_DEPTH, LID_LATCH_HEIGHT,
+            adsk.fusion.FeatureOperations.CutFeatureOperation)
+        rectangle_feature(
+            comp, 'Lid latch pocket rear', x, outer_w - WALL,
+            latches['z'], LID_LATCH_LENGTH, LID_LATCH_DEPTH, LID_LATCH_HEIGHT,
+            adsk.fusion.FeatureOperations.CutFeatureOperation)
 
     # Round rear-wall hole aligned with the assembled SMA axis. A shallow
     # circular counterbore leaves 2 mm of local wall so an antenna that stops
@@ -220,32 +368,52 @@ def lid(comp, x_offset=0):
     outer_w = CASE_INNER_WIDTH + 2 * WALL
     rectangle_feature(comp, 'Lid', x_offset, 0, 0, outer_l, outer_w, LID_THICKNESS)
 
-    # Inner locating rim, discontinuous so it can flex when snapped into place.
-    rim_h = 3.0
-    rim_t = 1.2
-    inset = WALL + CLEARANCE
-    rectangle_feature(comp, 'Lid rim front', x_offset + inset + 8, inset, LID_THICKNESS,
-                      CASE_INNER_LENGTH - 16, rim_t, rim_h,
-                      adsk.fusion.FeatureOperations.JoinFeatureOperation)
+    # Continuous locating rim. LID_RIM_CLEARANCE is the only gap to the cavity
+    # wall, so the latch bumps actually engage instead of rattling.
+    inset = WALL + LID_RIM_CLEARANCE
+    rim_inner_l = CASE_INNER_LENGTH - 2 * LID_RIM_CLEARANCE
+    rim_inner_w = CASE_INNER_WIDTH - 2 * LID_RIM_CLEARANCE
     gps = gps_cradle_layout(outer_l, outer_w, x_offset)
-    rear_rim_start = x_offset + inset + 8
-    rear_rim_end = rear_rim_start + CASE_INNER_LENGTH - 16
-    cradle_gap_start = gps['x'] - CLEARANCE - GPS_CLIP_THICKNESS - 1.0
-    cradle_gap_end = gps['x'] + GPS_BOARD_WIDTH + CLEARANCE + GPS_CLIP_THICKNESS + 1.0
-    rectangle_feature(comp, 'Lid rim rear left', rear_rim_start,
-                      outer_w - inset - rim_t, LID_THICKNESS,
-                      cradle_gap_start - rear_rim_start, rim_t, rim_h,
+    cradle_gap_start = gps['x'] - GPS_FIT_CLEARANCE - GPS_CLIP_THICKNESS - 1.0
+    cradle_gap_end = (gps['x'] + GPS_BOARD_WIDTH + GPS_FIT_CLEARANCE
+                      + GPS_CLIP_THICKNESS + 1.0)
+    rear_y = outer_w - inset - LID_RIM_THICKNESS
+
+    rectangle_feature(comp, 'Lid rim front', x_offset + inset, inset,
+                      LID_THICKNESS, rim_inner_l, LID_RIM_THICKNESS,
+                      LID_RIM_HEIGHT,
                       adsk.fusion.FeatureOperations.JoinFeatureOperation)
-    rectangle_feature(comp, 'Lid rim rear right', cradle_gap_end,
-                      outer_w - inset - rim_t, LID_THICKNESS,
-                      rear_rim_end - cradle_gap_end, rim_t, rim_h,
+    rectangle_feature(comp, 'Lid rim rear left', x_offset + inset, rear_y,
+                      LID_THICKNESS, cradle_gap_start - (x_offset + inset),
+                      LID_RIM_THICKNESS, LID_RIM_HEIGHT,
                       adsk.fusion.FeatureOperations.JoinFeatureOperation)
-    rectangle_feature(comp, 'Lid rim left', x_offset + inset, inset + 8, LID_THICKNESS,
-                      rim_t, CASE_INNER_WIDTH - 16, rim_h,
+    rectangle_feature(comp, 'Lid rim rear right', cradle_gap_end, rear_y,
+                      LID_THICKNESS,
+                      x_offset + inset + rim_inner_l - cradle_gap_end,
+                      LID_RIM_THICKNESS, LID_RIM_HEIGHT,
                       adsk.fusion.FeatureOperations.JoinFeatureOperation)
-    rectangle_feature(comp, 'Lid rim right', x_offset + outer_l - inset - rim_t, inset + 8, LID_THICKNESS,
-                      rim_t, CASE_INNER_WIDTH - 16, rim_h,
+    rectangle_feature(comp, 'Lid rim left', x_offset + inset, inset,
+                      LID_THICKNESS, LID_RIM_THICKNESS, rim_inner_w,
+                      LID_RIM_HEIGHT,
                       adsk.fusion.FeatureOperations.JoinFeatureOperation)
+    rectangle_feature(comp, 'Lid rim right',
+                      x_offset + inset + rim_inner_l - LID_RIM_THICKNESS, inset,
+                      LID_THICKNESS, LID_RIM_THICKNESS, rim_inner_w,
+                      LID_RIM_HEIGHT,
+                      adsk.fusion.FeatureOperations.JoinFeatureOperation)
+
+    # Latch bumps on the outer face of the rim. They ride over the wall and
+    # drop into the pockets cut in the case.
+    latch_z = LID_THICKNESS + LID_RIM_HEIGHT - LID_LATCH_BELOW_TOP
+    for x in lid_latch_positions(x_offset)['x_positions']:
+        rectangle_feature(
+            comp, 'Lid latch bump front', x, inset - LID_LATCH_DEPTH, latch_z,
+            LID_LATCH_LENGTH, LID_LATCH_DEPTH, LID_LATCH_HEIGHT,
+            adsk.fusion.FeatureOperations.JoinFeatureOperation)
+        rectangle_feature(
+            comp, 'Lid latch bump rear', x, rear_y + LID_RIM_THICKNESS,
+            latch_z, LID_LATCH_LENGTH, LID_LATCH_DEPTH, LID_LATCH_HEIGHT,
+            adsk.fusion.FeatureOperations.JoinFeatureOperation)
 
     # GPS cradle on the inside of the lid. Narrow ledges support only the free
     # PCB edges and lift the shield clear of the lid. The five right-angle pins
@@ -392,8 +560,9 @@ def run(context):
         lid(root, 110.0)
         gps_reference(root, 110.0)
         app.activeViewport.fit()
-        ui.messageBox('Case generated. Body 3 is the removable GPS fit reference '
-                      'with a round SMA hole and five right-angle pins.')
+        ui.messageBox('Case generated. The Pi is held by pegs and four clips, '
+                      'the lid snaps on four latches, and body 3 is the '
+                      'removable GPS fit reference.')
     except Exception:
         if ui:
             ui.messageBox('Failed:\n{}'.format(traceback.format_exc()))

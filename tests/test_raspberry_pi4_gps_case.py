@@ -42,8 +42,10 @@ class RaspberryPi4GpsCaseTest(unittest.TestCase):
         self.assertEqual(module.SMA_THREAD_DIAMETER, 5.0)
         self.assertEqual(module.SMA_PROJECTION, 8.0)
         self.assertEqual(module.SMA_CENTER_FROM_RIGHT, 3.5)
-        self.assertEqual(module.SMA_HOLE_DIAMETER, 5.6)
+        # The first print was too tight around the SMA: hole opened by 2 mm.
+        self.assertEqual(module.SMA_HOLE_DIAMETER, 7.6)
         self.assertEqual(module.SMA_LOCAL_WALL, 2.0)
+        self.assertGreater(module.SMA_RECESS_DIAMETER, module.SMA_HOLE_DIAMETER)
 
     def test_cradle_centres_board_and_faces_offset_sma_toward_rear(self):
         outer_l = module.CASE_INNER_LENGTH + 2 * module.WALL
@@ -113,8 +115,8 @@ class RaspberryPi4GpsCaseTest(unittest.TestCase):
         by_name = {hole[0]: hole for hole in holes}
         opening = by_name['GPS SMA hole']
         recess = by_name['GPS SMA outside recess']
-        self.assertEqual(opening[4], 5.6)
-        self.assertEqual(recess[4], 7.6)
+        self.assertEqual(opening[4], 7.6)
+        self.assertEqual(recess[4], 9.6)
         self.assertAlmostEqual(
             recess[5] - 0.2, module.WALL - module.SMA_LOCAL_WALL)
         axis_below_lid_inner_face = (
@@ -128,7 +130,7 @@ class RaspberryPi4GpsCaseTest(unittest.TestCase):
             outer_l - opening[1], lid_layout['sma_center_x'])
         self.assertAlmostEqual(
             opening[2], outer_h - axis_below_lid_inner_face)
-        self.assertAlmostEqual(opening[2], 27.1)
+        self.assertAlmostEqual(opening[2], 27.2)
 
     def test_rear_wall_hole_converts_model_coordinates_and_targets_case_body(self):
         comp = mock.Mock()
@@ -153,14 +155,14 @@ class RaspberryPi4GpsCaseTest(unittest.TestCase):
                 mock.patch.object(module, 'value', side_effect=lambda mm: mm):
             result = module.rear_wall_hole(
                 comp, target_body, 'GPS SMA hole',
-                53.4, 24.7, 65.6, 5.6, 4.4,
+                53.4, 24.7, 65.6, 7.6, 4.4,
             )
 
         point3d.create.assert_called_once_with(
             module.cm(53.4), module.cm(65.6), module.cm(24.7))
         sketch.modelToSketchSpace.assert_called_once_with(model_center)
         sketch.sketchCurves.sketchCircles.addByCenterRadius.assert_called_once_with(
-            sketch_center, module.cm(2.8))
+            sketch_center, module.cm(3.8))
         self.assertEqual(extrude_input.participantBodies, [target_body])
         extrude_input.setSymmetricExtent.assert_called_once_with(4.4, False)
         self.assertIs(result, feature)
@@ -230,6 +232,100 @@ class RaspberryPi4GpsCaseTest(unittest.TestCase):
         self.assertGreater(pin_left - pcb[1], module.GPS_EDGE_SUPPORT_WIDTH)
         self.assertGreater(pcb[1] + pcb[4] - pin_right,
                            module.GPS_EDGE_SUPPORT_WIDTH)
+
+
+class ScrewlessRetentionTest(unittest.TestCase):
+    def test_cavity_hugs_the_pcb_so_connectors_reach_their_openings(self):
+        self.assertEqual(
+            module.CASE_INNER_LENGTH,
+            module.PI_LENGTH + 2 * module.PI_SIDE_CLEARANCE)
+        self.assertEqual(
+            module.CASE_INNER_WIDTH,
+            module.PI_WIDTH + 2 * module.PI_SIDE_CLEARANCE)
+        self.assertLessEqual(module.PI_SIDE_CLEARANCE, 1.0)
+
+    def test_no_screw_posts_remain_and_pegs_fit_the_mounting_holes(self):
+        source = script.read_text()
+        self.assertNotIn('Pi post', source)
+        self.assertLess(module.PI_PEG_DIAMETER, module.PI_HOLE_DIAMETER)
+
+    def test_retention_uses_four_standoffs_and_four_clips(self):
+        cylinders, rectangles = [], []
+
+        def capture_cylinder(comp, name, cx, cy, z, diameter, height,
+                             operation='join', participant_bodies=None):
+            cylinders.append((name, cx, cy, z, diameter, height))
+
+        def capture_rectangle(comp, name, x, y, z, length, width, height,
+                              operation='new-body', participant_bodies=None):
+            rectangles.append((name, x, y, z, length, width, height))
+
+        with mock.patch.object(module, 'cylinder_feature', capture_cylinder), \
+                mock.patch.object(module, 'rectangle_feature', capture_rectangle):
+            module.pi_retention(None)
+
+        standoffs = [c for c in cylinders if 'standoff' in c[0]]
+        pegs = [c for c in cylinders if 'peg' in c[0]]
+        arms = [r for r in rectangles if 'clip arm' in r[0]]
+        hooks = [r for r in rectangles if 'clip hook' in r[0]]
+        self.assertEqual(len(standoffs), 4)
+        self.assertEqual(len(pegs), 4)
+        self.assertEqual(len(arms), 4)
+        self.assertEqual(len(hooks), 4)
+
+        layout = module.pi_layout()
+        # Every hook must overhang the board, i.e. start at the PCB top face.
+        for hook in hooks:
+            self.assertAlmostEqual(hook[3], layout['top_z'])
+            self.assertEqual(hook[4], module.PI_CLIP_OVERHANG)
+
+    def test_port_openings_follow_the_pcb_datum(self):
+        ports = module.pi_port_openings()
+        layout = module.pi_layout()
+        names = {entry[0] for entry in ports['long_edge']}
+        names |= {entry[0] for entry in ports['short_edge']}
+        self.assertIn('Ethernet opening', names)
+        self.assertIn('USB-C opening', names)
+
+        usb_c = next(e for e in ports['long_edge'] if e[0] == 'USB-C opening')
+        centre = usb_c[1] + usb_c[2] / 2
+        self.assertAlmostEqual(centre - layout['x'], 11.2)
+
+        ethernet = next(
+            e for e in ports['short_edge'] if e[0] == 'Ethernet opening')
+        centre = ethernet[1] + ethernet[2] / 2
+        self.assertAlmostEqual(centre - layout['y'], 45.75)
+
+    def test_lid_latches_engage_instead_of_floating(self):
+        # The first print failed because the rim cleared the wall by 0.6 mm.
+        self.assertLessEqual(module.LID_RIM_CLEARANCE, 0.2)
+        self.assertGreater(module.LID_LATCH_DEPTH, module.LID_RIM_CLEARANCE)
+
+        case_latches = module.lid_latch_positions()
+        lid_latches = module.lid_latch_positions(110.0)
+        self.assertEqual(len(case_latches['x_positions']), 2)
+        self.assertEqual(
+            [x - 110.0 for x in lid_latches['x_positions']],
+            list(case_latches['x_positions']))
+
+    def test_lid_bumps_and_case_pockets_share_the_same_height(self):
+        rectangles = []
+
+        def capture(comp, name, x, y, z, length, width, height,
+                    operation='new-body', participant_bodies=None):
+            rectangles.append((name, x, y, z, length, width, height))
+
+        with mock.patch.object(module, 'rectangle_feature', side_effect=capture):
+            module.lid(None, 110.0)
+
+        bumps = [r for r in rectangles if 'latch bump' in r[0]]
+        self.assertEqual(len(bumps), 4)
+        bump_z = {round(r[3], 3) for r in bumps}
+        self.assertEqual(len(bump_z), 1)
+
+        expected = (module.LID_THICKNESS + module.LID_RIM_HEIGHT
+                    - module.LID_LATCH_BELOW_TOP)
+        self.assertAlmostEqual(bump_z.pop(), expected)
 
 
 if __name__ == '__main__':

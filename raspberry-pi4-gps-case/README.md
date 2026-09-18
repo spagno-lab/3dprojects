@@ -4,6 +4,42 @@ Parametric case for a Raspberry Pi 4 Model B and a clip-in u-blox GPS carrier.
 The script generates three separate bodies: case, lid, and a GPS reference
 object used to check the cradle and SMA opening visually in Fusion 360.
 
+## Revision after the first physical print
+
+The first printed revision had four defects. All four are addressed here, and
+the fixes are cross-checked against a measured screwless reference case
+(`raspberry-pi-4-case-remix.stl`, Printables model 296102) whose geometry was
+extracted from the mesh rather than guessed:
+
+1. **The M2.5 screw posts are gone.** The board now drops onto four 3 mm
+   standoffs whose 2.4 mm pegs enter the mounting holes, and four 2.2 mm
+   cantilever clips snap 1 mm over the PCB edge. Clip thickness, length, and
+   interference follow the reference case.
+2. **The lid now latches.** The old rim cleared the cavity wall by 0.6 mm per
+   side and had no catch at all, so it could never click. The rim is now
+   continuous with 0.15 mm clearance and carries four bumps that drop into
+   pockets cut 4 mm below the case rim.
+3. **The SMA hole is 2 mm wider** (5.6 mm to 7.6 mm). The external counterbore
+   grew to 9.6 mm so it still thins the wall around the antenna nut.
+4. **The Pi sits against its openings.** The cavity was 91 x 62 mm for an
+   85 x 56 mm board, leaving the connectors about 3 mm inboard of the walls.
+   It is now the PCB plus 1 mm per side, and every port cut-out is generated
+   from the PCB datum using the official Raspberry Pi 4 connector centres.
+
+The resulting outer footprint is 92 x 63 mm, identical to the reference case.
+
+## Reference geometry taken from the mesh
+
+Measured directly from the donor STL, since mesh files carry no parameters:
+
+- wall thickness 2.5 mm, outer footprint 92 x 63 mm;
+- Pi standoffs on a 58.3 x 49.2 mm pattern, 5 mm diameter;
+- lid clips 2.2 mm thick, 12 mm long, latching over roughly 1 mm.
+
+Print orientation matters for the clips: they must be printed so the layer
+lines are not perpendicular to the bending direction, otherwise they shear off
+on first assembly.
+
 ## GPS carrier reference
 
 The cradle follows the supplied front, rear, and side photos and the measured
