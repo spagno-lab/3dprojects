@@ -46,6 +46,8 @@ class RaspberryPi4GpsCaseTest(unittest.TestCase):
         self.assertEqual(module.SMA_HOLE_DIAMETER, 7.6)
         self.assertEqual(module.SMA_LOCAL_WALL, 2.0)
         self.assertGreater(module.SMA_RECESS_DIAMETER, module.SMA_HOLE_DIAMETER)
+        self.assertLess(module.GPS_CLIP_OVERHANG,
+                        module.GPS_COMPONENT_KEEPOUT_INSET)
 
     def test_cradle_centres_board_and_faces_offset_sma_toward_rear(self):
         outer_l = module.CASE_INNER_LENGTH + 2 * module.WALL
@@ -89,18 +91,38 @@ class RaspberryPi4GpsCaseTest(unittest.TestCase):
             return lid_feature if name == 'Lid' else mock.Mock()
 
         with mock.patch.object(module, 'rectangle_feature', side_effect=capture), \
-                mock.patch.object(module, 'rectangle_mesh_feature') as mesh:
+                mock.patch.object(module, 'circle_vent_feature') as berries, \
+                mock.patch.object(module, 'ellipse_vent_feature') as leaves:
             module.lid(None, 110.0)
 
         names = {feature[0] for feature in features}
         self.assertIn('GPS left edge support', names)
         self.assertIn('GPS right edge support', names)
+        self.assertIn('GPS rear edge support', names)
         self.assertIn('GPS front stop left', names)
         self.assertIn('GPS front stop right', names)
         self.assertNotIn('GPS rear stop left', names)
         self.assertNotIn('GPS rear stop right', names)
         self.assertTrue(all(min(feature[4:7]) > 0 for feature in features))
-        self.assertIs(mesh.call_args.args[1], lid_body)
+        self.assertIs(berries.call_args.args[1], lid_body)
+        self.assertIs(leaves.call_args.args[1], lid_body)
+
+        rear_support = next(feature for feature in features
+                            if feature[0] == 'GPS rear edge support')
+        self.assertEqual(rear_support[4], module.GPS_BOARD_WIDTH)
+        self.assertEqual(rear_support[5], module.GPS_EDGE_SUPPORT_WIDTH)
+
+        rear_right_clip = next(feature for feature in features
+                               if feature[0] == 'GPS rear clip right')
+        layout = module.gps_cradle_layout(
+            module.CASE_INNER_LENGTH + 2 * module.WALL,
+            module.CASE_INNER_WIDTH + 2 * module.WALL,
+            110.0,
+        )
+        self.assertLessEqual(
+            rear_right_clip[2] + rear_right_clip[5],
+            layout['rear_y'] - module.SMA_BASE_LENGTH,
+        )
 
     def test_pi_board_datum_matches_official_mounting_pattern(self):
         layout = module.pi_layout()
@@ -158,24 +180,40 @@ class RaspberryPi4GpsCaseTest(unittest.TestCase):
                                module.PARTING_Z)
         self.assertEqual(microsd['part'], 'base')
 
-    def test_lid_mesh_has_two_millimetre_ribs_and_avoids_gps_cradle(self):
+    def test_raspberry_vents_keep_printable_bridges_and_avoid_gps_cradle(self):
         outer_l = module.CASE_INNER_LENGTH + 2 * module.WALL
         outer_w = module.CASE_INNER_WIDTH + 2 * module.WALL
-        cells, gps_keepout = module.lid_mesh_layout(outer_l, outer_w, 110.0)
+        circles, leaves, gps_keepout = module.raspberry_vent_layout(
+            outer_l, outer_w, 110.0)
 
-        # 34 cells with the 90.8 x 61.8 footprint and the GPS keep-out.
-        self.assertGreaterEqual(len(cells), 30)
-        self.assertEqual(module.LID_MESH_PITCH - module.LID_MESH_OPENING, 2.0)
+        self.assertEqual(len(circles), 18)
+        self.assertEqual(len(leaves), 6)
+        self.assertEqual(
+            module.RASPBERRY_VENT_PITCH - module.RASPBERRY_VENT_DIAMETER,
+            2.0,
+        )
+        radius = module.RASPBERRY_VENT_DIAMETER / 2
         self.assertTrue(all(
-            110.0 + module.LID_MESH_EDGE_MARGIN <= cell[0]
-            and cell[0] + cell[2] <= 110.0 + outer_l - module.LID_MESH_EDGE_MARGIN
-            and module.LID_MESH_EDGE_MARGIN <= cell[1]
-            and cell[1] + cell[3] <= outer_w - module.LID_MESH_EDGE_MARGIN
-            for cell in cells
+            110.0 + module.RASPBERRY_VENT_EDGE_MARGIN <= circle[0] - radius
+            and circle[0] + radius
+            <= 110.0 + outer_l - module.RASPBERRY_VENT_EDGE_MARGIN
+            and module.RASPBERRY_VENT_EDGE_MARGIN <= circle[1] - radius
+            and circle[1] + radius
+            <= outer_w - module.RASPBERRY_VENT_EDGE_MARGIN
+            for circle in circles
         ))
         self.assertTrue(all(
-            not module.rectangles_overlap(cell, gps_keepout)
-            for cell in cells
+            not module.rectangles_overlap(
+                (circle[0] - radius, circle[1] - radius,
+                 2 * radius, 2 * radius),
+                gps_keepout,
+            )
+            for circle in circles
+        ))
+        self.assertTrue(all(
+            not module.rectangles_overlap(
+                module.rotated_ellipse_bounds(leaf), gps_keepout)
+            for leaf in leaves
         ))
 
     def test_body_has_round_sma_hole_at_axis_and_two_millimetre_local_wall(self):
@@ -212,7 +250,7 @@ class RaspberryPi4GpsCaseTest(unittest.TestCase):
             outer_l - opening[1], lid_layout['sma_center_x'])
         self.assertAlmostEqual(
             opening[2], outer_h - axis_below_lid_inner_face)
-        self.assertAlmostEqual(opening[2], 27.2)
+        self.assertAlmostEqual(opening[2], 27.3)
 
     def test_rear_wall_hole_converts_model_coordinates_and_targets_case_body(self):
         comp = mock.Mock()
@@ -470,13 +508,15 @@ class ScrewlessRetentionTest(unittest.TestCase):
                 return mock.Mock()
             return inner
 
-        with mock.patch.object(module, 'rectangle_mesh_feature'), \
+        with mock.patch.object(module, 'circle_vent_feature'), \
+                mock.patch.object(module, 'ellipse_vent_feature'), \
                 mock.patch.object(module, 'rectangle_feature',
                                   side_effect=capture(lid_features)):
             module.lid(None, 110.0)
         with mock.patch.object(module, 'cylinder_feature'), \
                 mock.patch.object(module, 'gps_sma_wall_features'), \
-                mock.patch.object(module, 'rectangle_mesh_feature'), \
+                mock.patch.object(module, 'circle_vent_feature'), \
+                mock.patch.object(module, 'ellipse_vent_feature'), \
                 mock.patch.object(module, 'rectangle_feature',
                                   side_effect=capture(case_features)):
             module.shell(None)
@@ -611,7 +651,8 @@ class ScrewlessRetentionTest(unittest.TestCase):
             return mock.Mock()
 
         with mock.patch.object(module, 'rectangle_feature', side_effect=capture), \
-                mock.patch.object(module, 'rectangle_mesh_feature'):
+                mock.patch.object(module, 'circle_vent_feature'), \
+                mock.patch.object(module, 'ellipse_vent_feature'):
             module.lid(None, 110.0)
 
         bumps = [r for r in rectangles if 'latch bump' in r[0]]

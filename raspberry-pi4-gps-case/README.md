@@ -35,11 +35,11 @@ Primary references:
 
 ## Ventilated lid
 
-The lid uses a broad 7 × 7 mm square mesh with 2 mm ribs. A 6 mm solid border
-preserves stiffness and leaves the locating rim intact. Mesh cells that would
-intersect the GPS cradle and its clips are automatically omitted, leaving a
-solid load-bearing region around the removable module while opening most of
-the area above the Raspberry Pi for passive airflow.
+The lid uses two geometric raspberry motifs, each made from nine 6.5 mm round
+berry vents and three elliptical leaf vents. The berry grid keeps 2 mm bridges.
+A 6 mm solid border preserves stiffness and leaves the locating rim intact.
+The berry rows remain below the GPS carrier; the narrower leaf crowns fit
+beside it, leaving a solid load-bearing region around the removable module.
 
 ## Three parts, split at board level
 
@@ -49,7 +49,7 @@ The box parts on the top face of the PCB. There are three printed pieces:
   four snap tabs;
 - **shell** — everything above the board: the I/O openings, the pads that hold
   the board down, the lid seat and the SMA hole;
-- **lid** — vent mesh and the GPS cradle, unchanged.
+- **lid** — raspberry ventilation and the GPS cradle.
 
 ### Why it has to be split
 
@@ -211,13 +211,15 @@ dimensions of the blue carrier:
   the SMA hole position is mirrored left-to-right on the case;
 - the vertical SMA axis is measured down from the assembled lid's inner face;
   the lid plate itself is not part of that offset;
-- the SMA passes through a circular 5.6 mm rear-wall hole aligned with its
+- the SMA passes through a circular 7.6 mm rear-wall hole aligned with its
   assembled axis;
-- a circular external counterbore reduces the general 2.4 mm wall to 2 mm
+- a circular external counterbore reduces the general 2.5 mm wall to 2 mm
   around the SMA, leaving about
   1 mm clearance before an attached antenna that stops 3 mm from the base;
-- four short side clips grip the PCB edges without spanning the SMA or header;
-- two 0.8 mm edge ledges lift the board clear of the lid-side shield;
+- four 2 mm side clips grip the PCB edges without spanning the SMA or header;
+- two 1.2 mm side ledges and a full-width 1.2 mm rear ledge lift the board
+  clear of the lid-side shield and carry pressure applied to the SMA;
+- the rear-right clip stops before the 7 mm SMA base instead of overlapping it;
 - only the two extreme front corners are retained, leaving the pin bank and
   cable path open.
 

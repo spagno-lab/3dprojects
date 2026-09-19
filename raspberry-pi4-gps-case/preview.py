@@ -84,10 +84,18 @@ class Recorder:
                          (cx, cy, z, diameter / 2.0, height)))
         return _Feature()
 
-    def mesh(self, comp, target_body, name, rectangles, height):
-        for rect in rectangles:
-            self.ops.append(('box', 'cut',
-                             (rect[0], rect[1], 0.0, rect[2], rect[3], height)))
+    def circle_vents(self, comp, target_body, name, circles, height):
+        for center_x, center_y, diameter in circles:
+            self.ops.append(('cyl_z', 'cut',
+                             (center_x, center_y, 0.0,
+                              diameter / 2.0, height)))
+        return _Feature()
+
+    def ellipse_vents(self, comp, target_body, name, ellipses, height):
+        for center_x, center_y, major, minor, angle in ellipses:
+            self.ops.append(('ellipse_z', 'cut',
+                             (center_x, center_y, 0.0,
+                              major, minor, math.radians(angle), height)))
         return _Feature()
 
     def rear_hole(self, comp, target_body, name, center_x, center_z, wall_y,
@@ -120,12 +128,14 @@ def record(builder):
     originals = {
         'rectangle_feature': case.rectangle_feature,
         'cylinder_feature': case.cylinder_feature,
-        'rectangle_mesh_feature': case.rectangle_mesh_feature,
+        'circle_vent_feature': case.circle_vent_feature,
+        'ellipse_vent_feature': case.ellipse_vent_feature,
         'rear_wall_hole': case.rear_wall_hole,
     }
     case.rectangle_feature = recorder.rectangle
     case.cylinder_feature = recorder.cylinder
-    case.rectangle_mesh_feature = recorder.mesh
+    case.circle_vent_feature = recorder.circle_vents
+    case.ellipse_vent_feature = recorder.ellipse_vents
     case.rear_wall_hole = recorder.rear_hole
     try:
         builder()
@@ -148,6 +158,11 @@ def bounds(op_groups, pad=2.0):
                 xs += [p[0] - p[3], p[0] + p[3]]
                 ys += [p[1] - p[3], p[1] + p[3]]
                 zs += [p[2], p[2] + p[4]]
+            elif kind == 'ellipse_z':
+                radius = max(p[3], p[4])
+                xs += [p[0] - radius, p[0] + radius]
+                ys += [p[1] - radius, p[1] + radius]
+                zs += [p[2], p[2] + p[6]]
             else:
                 xs += [p[0] - p[3], p[0] + p[3]]
                 ys += [p[1], p[1] + p[4]]
@@ -170,6 +185,11 @@ def voxelise(ops, resolution, origin=None, far=None):
             xs += [p[0] - p[3], p[0] + p[3]]
             ys += [p[1] - p[3], p[1] + p[3]]
             zs += [p[2], p[2] + p[4]]
+        elif kind == 'ellipse_z':
+            radius = max(p[3], p[4])
+            xs += [p[0] - radius, p[0] + radius]
+            ys += [p[1] - radius, p[1] + radius]
+            zs += [p[2], p[2] + p[6]]
         else:
             xs += [p[0] - p[3], p[0] + p[3]]
             ys += [p[1], p[1] + p[4]]
@@ -197,6 +217,14 @@ def voxelise(ops, resolution, origin=None, far=None):
         elif kind == 'cyl_z':
             cx, cy, z, radius, height = p
             mask = (((gx - cx) ** 2 + (gy - cy) ** 2 <= radius ** 2)
+                    & (gz >= z) & (gz <= z + height))
+        elif kind == 'ellipse_z':
+            cx, cy, z, major, minor, angle, height = p
+            local_x = ((gx - cx) * math.cos(angle)
+                       + (gy - cy) * math.sin(angle))
+            local_y = (-(gx - cx) * math.sin(angle)
+                       + (gy - cy) * math.cos(angle))
+            mask = (((local_x / major) ** 2 + (local_y / minor) ** 2 <= 1.0)
                     & (gz >= z) & (gz <= z + height))
         else:
             cx, y, cz, radius, depth = p

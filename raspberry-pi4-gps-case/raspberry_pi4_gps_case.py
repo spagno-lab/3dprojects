@@ -1,5 +1,6 @@
 import adsk.core
 import adsk.fusion
+import math
 import traceback
 
 
@@ -96,7 +97,10 @@ GPS_BOARD_THICKNESS = 1.6
 GPS_MODULE_DEPTH = 8.0
 GPS_BACK_COMPONENT_DEPTH = (GPS_MODULE_DEPTH - GPS_BOARD_THICKNESS) / 2
 GPS_FRONT_COMPONENT_DEPTH = GPS_BACK_COMPONENT_DEPTH
-GPS_FIT_CLEARANCE = 0.3
+# The first printed cradle could rock under pressure on the SMA. 0.2 mm per
+# side still leaves a printable PETG sliding fit without the former 0.6 mm of
+# total lateral play.
+GPS_FIT_CLEARANCE = 0.2
 GPS_PIN_COUNT = 5
 GPS_PIN_FORWARD = 5.0
 GPS_PIN_DROP = 8.0
@@ -117,10 +121,12 @@ SMA_LOCAL_WALL = 2.0
 # The counterbore must stay wider than the enlarged through hole, otherwise it
 # no longer thins the wall around the antenna nut.
 SMA_RECESS_DIAMETER = SMA_HOLE_DIAMETER + 2.0
-GPS_CLIP_THICKNESS = 1.6
+GPS_CLIP_THICKNESS = 2.0
 GPS_CLIP_LENGTH = 5.0
-GPS_CLIP_OVERHANG = 1.0
-GPS_EDGE_SUPPORT_WIDTH = 0.8
+GPS_CLIP_OVERHANG = 1.1
+# The component keep-out starts 1.2 mm in from every edge, so the full safe
+# perimeter can support the PCB without touching parts on its underside.
+GPS_EDGE_SUPPORT_WIDTH = 1.2
 GPS_COMPONENT_KEEPOUT_INSET = 1.2
 
 # ---------------------------------------------------------------------------
@@ -175,12 +181,13 @@ PI_MICROSD_WIDTH = 11.11
 PI_MICROSD_ACCESS_WIDTH = 18.0
 PI_MICROSD_OPENING_HEIGHT = 8.0
 
-# A square lattice gives the lid broad passive ventilation while keeping
-# printable 2 mm ribs and a solid load path around the locating rim and GPS.
-LID_MESH_EDGE_MARGIN = 6.0
-LID_MESH_OPENING = 7.0
-LID_MESH_PITCH = 9.0
-LID_MESH_GPS_MARGIN = 2.0
+# Two raspberry-shaped groups of round vents replace the anonymous square
+# lattice. Individual holes keep printable bridges between them, while the
+# narrow leaf rows fit beside the GPS keep-out.
+RASPBERRY_VENT_DIAMETER = 6.5
+RASPBERRY_VENT_PITCH = 8.5
+RASPBERRY_VENT_EDGE_MARGIN = 6.0
+RASPBERRY_VENT_GPS_MARGIN = 2.0
 
 
 # ---------------------------------------------------------------------------
@@ -276,16 +283,43 @@ def cylinder_feature(comp, name, center_x, center_y, z, diameter, height,
     return feature
 
 
-def rectangle_mesh_feature(comp, target_body, name, rectangles, height):
-    """Cut many rectangular mesh cells in one sketch/extrude operation."""
+def circle_vent_feature(comp, target_body, name, circles, height):
+    """Cut a group of round vents in one sketch/extrude operation."""
     sketch = comp.sketches.add(comp.xYConstructionPlane)
     sketch.name = name
-    lines = sketch.sketchCurves.sketchLines
-    for x, y, length, width in rectangles:
-        lines.addTwoPointRectangle(
-            adsk.core.Point3D.create(cm(x), cm(y), 0),
-            adsk.core.Point3D.create(cm(x + length), cm(y + width), 0),
+    for center_x, center_y, diameter in circles:
+        sketch.sketchCurves.sketchCircles.addByCenterRadius(
+            adsk.core.Point3D.create(cm(center_x), cm(center_y), 0),
+            cm(diameter / 2),
         )
+
+    profiles = adsk.core.ObjectCollection.create()
+    for index in range(sketch.profiles.count):
+        profiles.add(sketch.profiles.item(index))
+    extrudes = comp.features.extrudeFeatures
+    extrude_input = extrudes.createInput(
+        profiles, adsk.fusion.FeatureOperations.CutFeatureOperation)
+    extrude_input.participantBodies = [target_body]
+    extrude_input.setDistanceExtent(False, value(height))
+    feature = extrudes.add(extrude_input)
+    feature.name = name
+    return feature
+
+
+def ellipse_vent_feature(comp, target_body, name, ellipses, height):
+    """Cut rotated elliptical leaf vents in one sketch/extrude operation."""
+    sketch = comp.sketches.add(comp.xYConstructionPlane)
+    sketch.name = name
+    for center_x, center_y, major_radius, minor_radius, angle_degrees in ellipses:
+        angle = math.radians(angle_degrees)
+        center = adsk.core.Point3D.create(cm(center_x), cm(center_y), 0)
+        major = adsk.core.Point3D.create(
+            cm(center_x + major_radius * math.cos(angle)),
+            cm(center_y + major_radius * math.sin(angle)), 0)
+        minor = adsk.core.Point3D.create(
+            cm(center_x - minor_radius * math.sin(angle)),
+            cm(center_y + minor_radius * math.cos(angle)), 0)
+        sketch.sketchCurves.sketchEllipses.add(center, major, minor)
 
     profiles = adsk.core.ObjectCollection.create()
     for index in range(sketch.profiles.count):
@@ -427,28 +461,78 @@ def rectangles_overlap(first, second):
     )
 
 
-def lid_mesh_layout(outer_l, outer_w, x_offset=0):
-    """Return printable square mesh cells, excluding the GPS cradle zone."""
+def rotated_ellipse_bounds(ellipse):
+    """Return an axis-aligned bounds rectangle for a rotated ellipse."""
+    center_x, center_y, major, minor, angle_degrees = ellipse
+    angle = math.radians(angle_degrees)
+    radius_x = math.sqrt(
+        (major * math.cos(angle)) ** 2 + (minor * math.sin(angle)) ** 2)
+    radius_y = math.sqrt(
+        (major * math.sin(angle)) ** 2 + (minor * math.cos(angle)) ** 2)
+    return (center_x - radius_x, center_y - radius_y,
+            2 * radius_x, 2 * radius_y)
+
+
+def raspberry_vent_layout(outer_l, outer_w, x_offset=0):
+    """Return two raspberry motifs made from separated berry and leaf vents.
+
+    The four-three-two berry rows sit below the GPS carrier. Three narrower
+    holes above each berry read as leaves and fit on either side of the carrier.
+    The motif is intentionally geometric rather than a traced trademark.
+    """
     gps = gps_cradle_layout(outer_l, outer_w, x_offset)
     gps_keepout = (
         gps['x'] - GPS_FIT_CLEARANCE - GPS_CLIP_THICKNESS
-        - LID_MESH_GPS_MARGIN,
-        gps['y'] - GPS_CLIP_THICKNESS - LID_MESH_GPS_MARGIN,
+        - RASPBERRY_VENT_GPS_MARGIN,
+        gps['y'] - GPS_CLIP_THICKNESS - RASPBERRY_VENT_GPS_MARGIN,
         GPS_BOARD_WIDTH + 2 * (
-            GPS_FIT_CLEARANCE + GPS_CLIP_THICKNESS + LID_MESH_GPS_MARGIN),
-        GPS_BOARD_LENGTH + GPS_CLIP_THICKNESS + 2 * LID_MESH_GPS_MARGIN,
+            GPS_FIT_CLEARANCE + GPS_CLIP_THICKNESS
+            + RASPBERRY_VENT_GPS_MARGIN),
+        GPS_BOARD_LENGTH + GPS_CLIP_THICKNESS
+        + 2 * RASPBERRY_VENT_GPS_MARGIN,
     )
-    cells = []
-    y = LID_MESH_EDGE_MARGIN
-    while y + LID_MESH_OPENING <= outer_w - LID_MESH_EDGE_MARGIN:
-        x = x_offset + LID_MESH_EDGE_MARGIN
-        while x + LID_MESH_OPENING <= x_offset + outer_l - LID_MESH_EDGE_MARGIN:
-            cell = (x, y, LID_MESH_OPENING, LID_MESH_OPENING)
-            if not rectangles_overlap(cell, gps_keepout):
-                cells.append(cell)
-            x += LID_MESH_PITCH
-        y += LID_MESH_PITCH
-    return cells, gps_keepout
+    radius = RASPBERRY_VENT_DIAMETER / 2
+    pitch = RASPBERRY_VENT_PITCH
+    motif_center_y = RASPBERRY_VENT_EDGE_MARGIN + radius + pitch * 1.25
+    motif_center_x = (
+        RASPBERRY_VENT_EDGE_MARGIN + radius + pitch * 1.5
+    )
+    motif_centers = (
+        x_offset + motif_center_x,
+        x_offset + outer_l - motif_center_x,
+    )
+
+    # (horizontal pitch offset, vertical pitch offset). The fruit points
+    # toward the front edge and the three-hole crown forms the leaves.
+    berry = (
+        (-1.5, 1.0), (-0.5, 1.0), (0.5, 1.0), (1.5, 1.0),
+        (-1.0, 0.0), (0.0, 0.0), (1.0, 0.0),
+        (-0.5, -1.0), (0.5, -1.0),
+    )
+    circles = []
+    leaves = []
+    for center_x in motif_centers:
+        for dx, dy in berry:
+            circle = (
+                center_x + dx * pitch,
+                motif_center_y + dy * pitch,
+                RASPBERRY_VENT_DIAMETER,
+            )
+            bounds = (circle[0] - radius, circle[1] - radius,
+                      2 * radius, 2 * radius)
+            if not rectangles_overlap(bounds, gps_keepout):
+                circles.append(circle)
+        candidates = (
+            (center_x - 0.55 * pitch, motif_center_y + 2.15 * pitch,
+             4.0, 2.0, 55.0),
+            (center_x + 0.55 * pitch, motif_center_y + 2.15 * pitch,
+             4.0, 2.0, 125.0),
+            (center_x, motif_center_y + 2.95 * pitch,
+             4.0, 2.0, 90.0),
+        )
+        leaves.extend(leaf for leaf in candidates if not rectangles_overlap(
+            rotated_ellipse_bounds(leaf), gps_keepout))
+    return circles, leaves, gps_keepout
 
 
 def rear_wall_hole(comp, target_body, name, center_x, center_z, wall_y,
@@ -850,16 +934,16 @@ def lid(comp, x_offset=0):
             latch_z, LID_LATCH_LENGTH, LID_LATCH_DEPTH, LID_LATCH_HEIGHT,
             adsk.fusion.FeatureOperations.JoinFeatureOperation)
 
-    # GPS cradle on the inside of the lid. Narrow ledges support only the free
-    # PCB edges and lift the shield clear of the lid. The five right-angle pins
-    # and their cable path remain fully open toward the case interior.
+    # GPS cradle on the inside of the lid. The full component-free perimeter
+    # supports the PCB, including a rear crossbar directly below the SMA load.
+    # The five right-angle pins and their cable path remain open.
     gps_x = gps['x']
     gps_y = gps['y']
     board_z = LID_THICKNESS + GPS_BACK_COMPONENT_DEPTH + GPS_FIT_CLEARANCE
     rail_x_left = gps_x - GPS_FIT_CLEARANCE - GPS_CLIP_THICKNESS
     rail_x_right = gps_x + GPS_BOARD_WIDTH + GPS_FIT_CLEARANCE
-    rail_y = gps_y + 2.0
-    rail_length = GPS_BOARD_LENGTH - 4.0
+    rail_y = gps_y + 1.0
+    rail_length = GPS_BOARD_LENGTH - 2.0
     support_h = board_z - LID_THICKNESS
     rail_h = support_h + GPS_BOARD_THICKNESS + 0.8
     rectangle_feature(comp, 'GPS left edge support', gps_x, rail_y,
@@ -869,6 +953,10 @@ def lid(comp, x_offset=0):
                       gps_x + GPS_BOARD_WIDTH - GPS_EDGE_SUPPORT_WIDTH, rail_y,
                       LID_THICKNESS, GPS_EDGE_SUPPORT_WIDTH, rail_length,
                       support_h, adsk.fusion.FeatureOperations.JoinFeatureOperation)
+    rectangle_feature(comp, 'GPS rear edge support', gps_x,
+                      gps['rear_y'] - GPS_EDGE_SUPPORT_WIDTH, LID_THICKNESS,
+                      GPS_BOARD_WIDTH, GPS_EDGE_SUPPORT_WIDTH, support_h,
+                      adsk.fusion.FeatureOperations.JoinFeatureOperation)
     rectangle_feature(comp, 'GPS left rail', rail_x_left, rail_y, LID_THICKNESS,
                       GPS_CLIP_THICKNESS, rail_length, rail_h,
                       adsk.fusion.FeatureOperations.JoinFeatureOperation)
@@ -889,12 +977,13 @@ def lid(comp, x_offset=0):
                       LID_THICKNESS, stop_width, GPS_CLIP_THICKNESS, stop_h,
                       adsk.fusion.FeatureOperations.JoinFeatureOperation)
 
-    # The rear PCB edge and SMA base sit directly against the inside wall, so
-    # no printed rear stop is needed and no stop can collide with the SMA.
+    # The rear lips clamp close to the loaded edge. The right lip stays ahead
+    # of the 7 mm SMA base instead of overlapping it as the old one did.
     lip_z = board_z + GPS_BOARD_THICKNESS + GPS_FIT_CLEARANCE
     lip_width = GPS_CLIP_THICKNESS + GPS_FIT_CLEARANCE + GPS_CLIP_OVERHANG
-    for position, clip_y in (('front', gps_y + 4.0),
-                             ('rear', gps['rear_y'] - 4.0 - GPS_CLIP_LENGTH)):
+    for position, clip_y in (('front', gps_y + 3.0),
+                             ('rear', gps['rear_y'] - SMA_BASE_LENGTH
+                              - GPS_FIT_CLEARANCE - GPS_CLIP_LENGTH)):
         rectangle_feature(comp, f'GPS {position} clip left', rail_x_left, clip_y,
                           lip_z, lip_width, GPS_CLIP_LENGTH, 1.0,
                           adsk.fusion.FeatureOperations.JoinFeatureOperation)
@@ -903,11 +992,16 @@ def lid(comp, x_offset=0):
                           lip_z, lip_width, GPS_CLIP_LENGTH, 1.0,
                           adsk.fusion.FeatureOperations.JoinFeatureOperation)
 
-    # Broad square mesh above the Pi. One combined cut is considerably faster
-    # in Fusion than creating a separate extrude feature for every mesh cell.
-    mesh_cells, _ = lid_mesh_layout(outer_l, outer_w, x_offset)
-    rectangle_mesh_feature(
-        comp, lid_body, 'Lid ventilation mesh', mesh_cells,
+    # Raspberry-shaped ventilation. Two combined cuts keep Fusion rebuilds
+    # fast and leave solid bridges between 18 berry and six leaf openings.
+    vent_circles, vent_leaves, _ = raspberry_vent_layout(
+        outer_l, outer_w, x_offset)
+    circle_vent_feature(
+        comp, lid_body, 'Raspberry berry vents', vent_circles,
+        LID_THICKNESS + 1.0,
+    )
+    ellipse_vent_feature(
+        comp, lid_body, 'Raspberry leaf vents', vent_leaves,
         LID_THICKNESS + 1.0,
     )
 
