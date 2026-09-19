@@ -181,13 +181,20 @@ PI_MICROSD_WIDTH = 11.11
 PI_MICROSD_ACCESS_WIDTH = 18.0
 PI_MICROSD_OPENING_HEIGHT = 8.0
 
-# Two raspberry-shaped groups of round vents replace the anonymous square
-# lattice. Individual holes keep printable bridges between them, while the
-# narrow leaf rows fit beside the GPS keep-out.
+# One full-size raspberry sits on the front centre of the lid. A staggered
+# field of smaller raspberries reaches across the whole usable face, like a
+# perforated decorative sheet. Only individual openings that would weaken a
+# GPS support or merge into the large logo are omitted.
 RASPBERRY_VENT_DIAMETER = 6.5
 RASPBERRY_VENT_PITCH = 8.5
 RASPBERRY_VENT_EDGE_MARGIN = 6.0
-RASPBERRY_VENT_GPS_MARGIN = 2.0
+RASPBERRY_PATTERN_DIAMETER = 2.0
+RASPBERRY_PATTERN_PITCH = 3.0
+RASPBERRY_PATTERN_X_STEP = 12.0
+RASPBERRY_PATTERN_Y_STEP = 11.5
+RASPBERRY_PATTERN_EDGE_MARGIN = 4.0
+RASPBERRY_PATTERN_CLEARANCE = 1.0
+RASPBERRY_PATTERN_SUPPORT_CLEARANCE = 0.6
 
 
 # ---------------------------------------------------------------------------
@@ -473,66 +480,155 @@ def rotated_ellipse_bounds(ellipse):
             2 * radius_x, 2 * radius_y)
 
 
-def raspberry_vent_layout(outer_l, outer_w, x_offset=0):
-    """Return two raspberry motifs made from separated berry and leaf vents.
-
-    The four-three-two berry rows sit below the GPS carrier. Three narrower
-    holes above each berry read as leaves and fit on either side of the carrier.
-    The motif is intentionally geometric rather than a traced trademark.
-    """
-    gps = gps_cradle_layout(outer_l, outer_w, x_offset)
-    gps_keepout = (
-        gps['x'] - GPS_FIT_CLEARANCE - GPS_CLIP_THICKNESS
-        - RASPBERRY_VENT_GPS_MARGIN,
-        gps['y'] - GPS_CLIP_THICKNESS - RASPBERRY_VENT_GPS_MARGIN,
-        GPS_BOARD_WIDTH + 2 * (
-            GPS_FIT_CLEARANCE + GPS_CLIP_THICKNESS
-            + RASPBERRY_VENT_GPS_MARGIN),
-        GPS_BOARD_LENGTH + GPS_CLIP_THICKNESS
-        + 2 * RASPBERRY_VENT_GPS_MARGIN,
-    )
-    radius = RASPBERRY_VENT_DIAMETER / 2
-    pitch = RASPBERRY_VENT_PITCH
-    motif_center_y = RASPBERRY_VENT_EDGE_MARGIN + radius + pitch * 1.25
-    motif_center_x = (
-        RASPBERRY_VENT_EDGE_MARGIN + radius + pitch * 1.5
-    )
-    motif_centers = (
-        x_offset + motif_center_x,
-        x_offset + outer_l - motif_center_x,
-    )
-
-    # (horizontal pitch offset, vertical pitch offset). The fruit points
-    # toward the front edge and the three-hole crown forms the leaves.
-    berry = (
+def raspberry_motif(center_x, center_y, diameter, pitch,
+                    leaf_major, leaf_minor):
+    """Build one geometric raspberry from nine berry and two leaf holes."""
+    berries = (
         (-1.5, 1.0), (-0.5, 1.0), (0.5, 1.0), (1.5, 1.0),
         (-1.0, 0.0), (0.0, 0.0), (1.0, 0.0),
         (-0.5, -1.0), (0.5, -1.0),
     )
-    circles = []
-    leaves = []
-    for center_x in motif_centers:
-        for dx, dy in berry:
-            circle = (
-                center_x + dx * pitch,
-                motif_center_y + dy * pitch,
-                RASPBERRY_VENT_DIAMETER,
-            )
-            bounds = (circle[0] - radius, circle[1] - radius,
-                      2 * radius, 2 * radius)
-            if not rectangles_overlap(bounds, gps_keepout):
-                circles.append(circle)
-        candidates = (
-            (center_x - 0.55 * pitch, motif_center_y + 2.15 * pitch,
-             4.0, 2.0, 55.0),
-            (center_x + 0.55 * pitch, motif_center_y + 2.15 * pitch,
-             4.0, 2.0, 125.0),
-            (center_x, motif_center_y + 2.95 * pitch,
-             4.0, 2.0, 90.0),
+    circles = [
+        (center_x + dx * pitch, center_y + dy * pitch, diameter)
+        for dx, dy in berries
+    ]
+    leaves = [
+        (center_x - 0.45 * pitch, center_y + 1.42 * pitch,
+         leaf_major, leaf_minor, 45.0),
+        (center_x + 0.45 * pitch, center_y + 1.42 * pitch,
+         leaf_major, leaf_minor, 135.0),
+    ]
+    return circles, leaves
+
+
+def vent_group_bounds(circles, leaves, clearance=0.0):
+    """Return one rectangle enclosing every opening in a vent group."""
+    bounds = []
+    for center_x, center_y, diameter in circles:
+        radius = diameter / 2
+        bounds.append((center_x - radius, center_y - radius,
+                       diameter, diameter))
+    bounds.extend(rotated_ellipse_bounds(leaf) for leaf in leaves)
+    left = min(bound[0] for bound in bounds) - clearance
+    bottom = min(bound[1] for bound in bounds) - clearance
+    right = max(bound[0] + bound[2] for bound in bounds) + clearance
+    top = max(bound[1] + bound[3] for bound in bounds) + clearance
+    return left, bottom, right - left, top - bottom
+
+
+def expanded_rectangle(rectangle, clearance):
+    """Grow a rectangle equally on every side."""
+    x, y, length, width = rectangle
+    return (x - clearance, y - clearance,
+            length + 2 * clearance, width + 2 * clearance)
+
+
+def gps_vent_keepouts(outer_l, outer_w, x_offset=0):
+    """Return only the load-bearing GPS footprints that vents must avoid."""
+    gps = gps_cradle_layout(outer_l, outer_w, x_offset)
+    gps_x = gps['x']
+    gps_y = gps['y']
+    rail_x_left = gps_x - GPS_FIT_CLEARANCE - GPS_CLIP_THICKNESS
+    rail_x_right = gps_x + GPS_BOARD_WIDTH + GPS_FIT_CLEARANCE
+    rail_y = gps_y + 1.0
+    rail_length = GPS_BOARD_LENGTH - 2.0
+    stop_width = GPS_EDGE_SUPPORT_WIDTH
+    front_stop_y = gps_y - GPS_CLIP_THICKNESS
+    return tuple(expanded_rectangle(rectangle,
+                                    RASPBERRY_PATTERN_SUPPORT_CLEARANCE)
+                 for rectangle in (
+        (gps_x, rail_y, GPS_EDGE_SUPPORT_WIDTH, rail_length),
+        (gps_x + GPS_BOARD_WIDTH - GPS_EDGE_SUPPORT_WIDTH, rail_y,
+         GPS_EDGE_SUPPORT_WIDTH, rail_length),
+        (gps_x, gps['rear_y'] - GPS_EDGE_SUPPORT_WIDTH,
+         GPS_BOARD_WIDTH, GPS_EDGE_SUPPORT_WIDTH),
+        (rail_x_left, rail_y, GPS_CLIP_THICKNESS, rail_length),
+        (rail_x_right, rail_y, GPS_CLIP_THICKNESS, rail_length),
+        (gps_x, front_stop_y, stop_width, GPS_CLIP_THICKNESS),
+        (gps_x + GPS_BOARD_WIDTH - stop_width, front_stop_y,
+         stop_width, GPS_CLIP_THICKNESS),
+    ))
+
+
+def rectangle_inside(rectangle, boundary):
+    """Return whether one rectangle is fully contained by another."""
+    x, y, length, width = rectangle
+    bx, by, bl, bw = boundary
+    return (x >= bx and y >= by
+            and x + length <= bx + bl and y + width <= by + bw)
+
+
+def raspberry_vent_layout(outer_l, outer_w, x_offset=0):
+    """Return one large central raspberry plus a small repeating pattern."""
+    gps_keepouts = gps_vent_keepouts(outer_l, outer_w, x_offset)
+    main_center_x = x_offset + outer_l / 2
+    main_center_y = (
+        RASPBERRY_VENT_EDGE_MARGIN + RASPBERRY_VENT_DIAMETER / 2
+        + RASPBERRY_VENT_PITCH
+    )
+    circles, leaves = raspberry_motif(
+        main_center_x, main_center_y,
+        RASPBERRY_VENT_DIAMETER, RASPBERRY_VENT_PITCH, 4.0, 2.0,
+    )
+    main_keepouts = [
+        expanded_rectangle(
+            (center_x - diameter / 2, center_y - diameter / 2,
+             diameter, diameter),
+            RASPBERRY_PATTERN_CLEARANCE,
         )
-        leaves.extend(leaf for leaf in candidates if not rectangles_overlap(
-            rotated_ellipse_bounds(leaf), gps_keepout))
-    return circles, leaves, gps_keepout
+        for center_x, center_y, diameter in circles
+    ]
+    main_keepouts.extend(
+        expanded_rectangle(rotated_ellipse_bounds(leaf),
+                           RASPBERRY_PATTERN_CLEARANCE)
+        for leaf in leaves
+    )
+
+    # Start motifs at the usable boundary and clip individual openings at the
+    # frame, central logo and GPS supports. This is deliberately different
+    # from discarding whole motifs: partial raspberries at those boundaries
+    # make the pattern read as one continuous sheet, as in the reference.
+    usable_face = (
+        x_offset + RASPBERRY_PATTERN_EDGE_MARGIN,
+        RASPBERRY_PATTERN_EDGE_MARGIN,
+        outer_l - 2 * RASPBERRY_PATTERN_EDGE_MARGIN,
+        outer_w - 2 * RASPBERRY_PATTERN_EDGE_MARGIN,
+    )
+    center_y = RASPBERRY_PATTERN_EDGE_MARGIN
+    row = 0
+    while center_y <= outer_w - RASPBERRY_PATTERN_EDGE_MARGIN:
+        center_x = (x_offset + RASPBERRY_PATTERN_EDGE_MARGIN
+                    - (RASPBERRY_PATTERN_X_STEP / 2 if row % 2 else 0))
+        while center_x <= x_offset + outer_l - RASPBERRY_PATTERN_EDGE_MARGIN:
+            small_circles, small_leaves = raspberry_motif(
+                center_x, center_y,
+                RASPBERRY_PATTERN_DIAMETER, RASPBERRY_PATTERN_PITCH,
+                1.4, 0.7,
+            )
+            for circle in small_circles:
+                circle_bounds = (
+                    circle[0] - circle[2] / 2,
+                    circle[1] - circle[2] / 2,
+                    circle[2], circle[2],
+                )
+                if (rectangle_inside(circle_bounds, usable_face)
+                        and not any(rectangles_overlap(circle_bounds, keepout)
+                                    for keepout in main_keepouts)
+                        and not any(rectangles_overlap(circle_bounds, keepout)
+                                    for keepout in gps_keepouts)):
+                    circles.append(circle)
+            for leaf in small_leaves:
+                leaf_bounds = rotated_ellipse_bounds(leaf)
+                if (rectangle_inside(leaf_bounds, usable_face)
+                        and not any(rectangles_overlap(leaf_bounds, keepout)
+                                    for keepout in main_keepouts)
+                        and not any(rectangles_overlap(leaf_bounds, keepout)
+                                    for keepout in gps_keepouts)):
+                    leaves.append(leaf)
+            center_x += RASPBERRY_PATTERN_X_STEP
+        center_y += RASPBERRY_PATTERN_Y_STEP
+        row += 1
+    return circles, leaves, gps_keepouts
 
 
 def rear_wall_hole(comp, target_body, name, center_x, center_z, wall_y,
@@ -992,8 +1088,9 @@ def lid(comp, x_offset=0):
                           lip_z, lip_width, GPS_CLIP_LENGTH, 1.0,
                           adsk.fusion.FeatureOperations.JoinFeatureOperation)
 
-    # Raspberry-shaped ventilation. Two combined cuts keep Fusion rebuilds
-    # fast and leave solid bridges between 18 berry and six leaf openings.
+    # Raspberry-shaped ventilation: one full-size logo at the front centre and
+    # a dense field of smaller logos around it. Two combined cuts keep Fusion
+    # rebuilds practical even though the face now carries the full pattern.
     vent_circles, vent_leaves, _ = raspberry_vent_layout(
         outer_l, outer_w, x_offset)
     circle_vent_feature(

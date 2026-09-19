@@ -35,11 +35,14 @@ Primary references:
 
 ## Ventilated lid
 
-The lid uses two geometric raspberry motifs, each made from nine 6.5 mm round
-berry vents and three elliptical leaf vents. The berry grid keeps 2 mm bridges.
-A 6 mm solid border preserves stiffness and leaves the locating rim intact.
-The berry rows remain below the GPS carrier; the narrower leaf crowns fit
-beside it, leaving a solid load-bearing region around the removable module.
+The lid uses one full-size geometric raspberry on the front centre, made from
+nine 6.5 mm berry vents and two elliptical leaf vents. A repeating field of
+smaller raspberries fills the rest of the visible face, matching the look of a
+decorative perforated sheet. The main berry grid keeps 2 mm bridges; the small
+pattern keeps 1 mm nominal webs. Rows are staggered and partial motifs continue
+right up to the safe perimeter, around the large logo and through the open
+centre of the GPS cradle. Only individual holes crossing a load-bearing GPS
+rail or support are omitted, with a 0.6 mm protective margin.
 
 ## Three parts, split at board level
 
@@ -240,8 +243,9 @@ the PCB edges and do not press on the component keep-out.
 
 ## Slicing profile
 
-`raspberry.3mf` carries the Bambu Studio project for an X2D with a 0.4 nozzle
-and PETG. Settings that matter for this part:
+`raspberry.3mf` carries the current shell, lid, and base as three named objects,
+plus the Bambu Studio process configuration for an X2D with a 0.4 nozzle and
+PETG. Settings that matter for this part:
 
 | setting | value | why |
 |---|---|---|
@@ -262,12 +266,19 @@ and PETG. Settings that matter for this part:
 | shell | parting face down | the press pads land on the first layer and the I/O openings are open at the bed, so nothing bridges |
 | lid | rim up | unchanged |
 
-The 3mf project still carries the old single-piece case. Its process settings
-are still the right ones, but the geometry in it is stale: regenerate the
-bodies from the script before slicing.
+All three parts are placed unrotated in their printable orientation: base floor
+down, shell parting face down, and lid rim up.
 
-Both parts are placed unrotated: the case with its opening up and the lid with
-its rim up, so the clips and the rim grow along Z and bend across layer lines.
+Regenerate the archive after geometry changes with:
+
+```bash
+uv run --with numpy --with pillow python export_3mf.py
+```
+
+This requires the `openscad` command (tested with OpenSCAD 2021.01).
+The exporter records the same primitives as `preview.py`, renders each part
+through OpenSCAD, packages three separate 3MF objects, validates the archive,
+and preserves `Metadata/project_settings.config` from the previous project.
 
 ### Loading it
 
