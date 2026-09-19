@@ -180,32 +180,52 @@ class RaspberryPi4GpsCaseTest(unittest.TestCase):
                                module.PARTING_Z)
         self.assertEqual(microsd['part'], 'base')
 
-    def test_raspberry_vents_keep_printable_bridges_and_avoid_gps_cradle(self):
+    def test_raspberry_vents_fill_lid_around_one_central_full_size_logo(self):
         outer_l = module.CASE_INNER_LENGTH + 2 * module.WALL
         outer_w = module.CASE_INNER_WIDTH + 2 * module.WALL
         circles, leaves, gps_keepout = module.raspberry_vent_layout(
             outer_l, outer_w, 110.0)
 
-        self.assertEqual(len(circles), 18)
-        self.assertEqual(len(leaves), 6)
+        main_circles = [
+            circle for circle in circles
+            if circle[2] == module.RASPBERRY_VENT_DIAMETER
+        ]
+        pattern_circles = [
+            circle for circle in circles
+            if circle[2] == module.RASPBERRY_PATTERN_DIAMETER
+        ]
+        self.assertEqual(len(main_circles), 9)
+        self.assertEqual(len(pattern_circles) % 9, 0)
+        self.assertGreaterEqual(len(pattern_circles) // 9, 16)
+        self.assertEqual(len(leaves), 2 + 2 * (len(pattern_circles) // 9))
+        self.assertAlmostEqual(
+            sum(circle[0] for circle in main_circles) / len(main_circles),
+            110.0 + outer_l / 2,
+        )
         self.assertEqual(
             module.RASPBERRY_VENT_PITCH - module.RASPBERRY_VENT_DIAMETER,
             2.0,
         )
-        radius = module.RASPBERRY_VENT_DIAMETER / 2
+        self.assertEqual(
+            module.RASPBERRY_PATTERN_PITCH
+            - module.RASPBERRY_PATTERN_DIAMETER,
+            1.0,
+        )
         self.assertTrue(all(
-            110.0 + module.RASPBERRY_VENT_EDGE_MARGIN <= circle[0] - radius
-            and circle[0] + radius
-            <= 110.0 + outer_l - module.RASPBERRY_VENT_EDGE_MARGIN
-            and module.RASPBERRY_VENT_EDGE_MARGIN <= circle[1] - radius
-            and circle[1] + radius
-            <= outer_w - module.RASPBERRY_VENT_EDGE_MARGIN
+            110.0 + module.RASPBERRY_PATTERN_EDGE_MARGIN
+            <= circle[0] - circle[2] / 2
+            and circle[0] + circle[2] / 2
+            <= 110.0 + outer_l - module.RASPBERRY_PATTERN_EDGE_MARGIN
+            and module.RASPBERRY_PATTERN_EDGE_MARGIN
+            <= circle[1] - circle[2] / 2
+            and circle[1] + circle[2] / 2
+            <= outer_w - module.RASPBERRY_PATTERN_EDGE_MARGIN
             for circle in circles
         ))
         self.assertTrue(all(
             not module.rectangles_overlap(
-                (circle[0] - radius, circle[1] - radius,
-                 2 * radius, 2 * radius),
+                (circle[0] - circle[2] / 2, circle[1] - circle[2] / 2,
+                 circle[2], circle[2]),
                 gps_keepout,
             )
             for circle in circles

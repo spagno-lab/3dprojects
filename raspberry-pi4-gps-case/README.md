@@ -35,11 +35,12 @@ Primary references:
 
 ## Ventilated lid
 
-The lid uses two geometric raspberry motifs, each made from nine 6.5 mm round
-berry vents and three elliptical leaf vents. The berry grid keeps 2 mm bridges.
-A 6 mm solid border preserves stiffness and leaves the locating rim intact.
-The berry rows remain below the GPS carrier; the narrower leaf crowns fit
-beside it, leaving a solid load-bearing region around the removable module.
+The lid uses one full-size geometric raspberry on the front centre, made from
+nine 6.5 mm berry vents and two elliptical leaf vents. A repeating field of
+smaller raspberries fills the rest of the visible face, matching the look of a
+decorative perforated sheet. The main berry grid keeps 2 mm bridges; the small
+pattern keeps 1 mm nominal webs. Whole pattern motifs are omitted around the
+GPS cradle, leaving a solid load-bearing island beneath the module and SMA.
 
 ## Three parts, split at board level
 

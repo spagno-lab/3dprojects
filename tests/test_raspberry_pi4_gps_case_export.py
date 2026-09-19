@@ -45,6 +45,19 @@ class RaspberryPi4GpsCaseExportTest(unittest.TestCase):
         # at the end would erase standoffs that are added inside a cavity.
         self.assertLess(source.index('union()'), source.index('difference()'))
 
+    def test_consecutive_operations_are_batched_without_changing_order(self):
+        operations = [
+            ('box', 'new', (0, 0, 0, 10, 10, 2)),
+            ('cyl_z', 'cut', (2, 2, 0, 1, 3)),
+            ('cyl_z', 'cut', (8, 8, 0, 1, 3)),
+            ('box', 'join', (4, 4, 2, 2, 2, 1)),
+        ]
+
+        source = export.part_scad(operations)
+
+        self.assertEqual(source.count('difference()'), 1)
+        self.assertLess(source.index('union()'), source.index('difference()'))
+
     def test_three_object_archive_is_valid_and_reproducible(self):
         vertices = [
             (0.0, 0.0, 0.0),

@@ -395,17 +395,26 @@ def check_lid_ventilation():
     outer_l = case.CASE_INNER_LENGTH + 2 * case.WALL
     outer_w = case.CASE_INNER_WIDTH + 2 * case.WALL
     berries, leaves, gps_keepout = case.raspberry_vent_layout(outer_l, outer_w)
+    main = [berry for berry in berries
+            if berry[2] == case.RASPBERRY_VENT_DIAMETER]
+    pattern = [berry for berry in berries
+               if berry[2] == case.RASPBERRY_PATTERN_DIAMETER]
+    motif_count = len(pattern) // 9
     bridge = case.RASPBERRY_VENT_PITCH - case.RASPBERRY_VENT_DIAMETER
-    check(len(berries) == 18 and len(leaves) == 6,
-          'two complete raspberry motifs',
+    pattern_bridge = (
+        case.RASPBERRY_PATTERN_PITCH - case.RASPBERRY_PATTERN_DIAMETER)
+    check(len(main) == 9 and len(leaves) == 2 + 2 * motif_count,
+          'one complete central raspberry and repeating lid pattern',
           f'{len(berries)} berry and {len(leaves)} leaf vents')
     check(bridge >= 2.0 - EPS,
-          'printable bridges between berry vents',
-          f'{bridge:.1f} mm minimum nominal bridge')
-    radius = case.RASPBERRY_VENT_DIAMETER / 2
+          'printable bridges in the central raspberry',
+          f'{bridge:.1f} mm nominal bridge')
+    check(pattern_bridge >= 1.0 - EPS,
+          'printable webs in the small raspberry pattern',
+          f'{pattern_bridge:.1f} mm nominal web across {motif_count} motifs')
     clashes = [circle for circle in berries if case.rectangles_overlap(
-        (circle[0] - radius, circle[1] - radius,
-         2 * radius, 2 * radius), gps_keepout)]
+        (circle[0] - circle[2] / 2, circle[1] - circle[2] / 2,
+         circle[2], circle[2]), gps_keepout)]
     check(not clashes, 'berry vents clear the GPS carrier',
           'no overlap' if not clashes else f'{len(clashes)} overlap(s)')
     leaf_clashes = [leaf for leaf in leaves if case.rectangles_overlap(

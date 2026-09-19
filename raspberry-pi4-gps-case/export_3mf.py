@@ -66,20 +66,39 @@ def primitive_scad(kind, params):
 
 def part_scad(operations, z_offset=0.0):
     body = None
+    pending_operation = None
+    pending_primitives = []
+
+    def combine(current_body, operation, primitives):
+        if not primitives:
+            return current_body
+        group = primitives[0] if len(primitives) == 1 else (
+            'union() {\n  ' + '\n  '.join(primitives) + '\n}'
+        )
+        if operation == 'cut':
+            return f'difference() {{\n  {current_body}\n  {group}\n}}'
+        return f'union() {{\n  {current_body}\n  {group}\n}}'
+
     for kind, operation, params in operations:
         primitive = primitive_scad(kind, params)
         if body is None:
             if operation == 'cut':
                 raise ValueError('part starts with a cut operation')
             body = primitive
-        elif operation == 'cut':
-            body = f'difference() {{\n  {body}\n  {primitive}\n}}'
-        else:
-            body = f'union() {{\n  {body}\n  {primitive}\n}}'
+            continue
+        if pending_operation is not None and operation != pending_operation:
+            body = combine(body, pending_operation, pending_primitives)
+            pending_primitives = []
+        pending_operation = operation
+        pending_primitives.append(primitive)
+    body = combine(body, pending_operation, pending_primitives)
     if body is None:
         raise ValueError('part contains no positive geometry')
     return (
-        '$fn=96;\n'
+        # 48 facets leave less than 0.01 mm radial error even on the 7.6 mm
+        # SMA opening, well below FDM resolution, without making hundreds of
+        # patterned vents prohibitively expensive for CGAL to triangulate.
+        '$fn=48;\n'
         f'translate([0,0,{number(z_offset)}]) {{\n{body}\n}}\n'
     )
 
