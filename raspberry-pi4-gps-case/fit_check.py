@@ -333,6 +333,25 @@ def check_sma_and_gps():
           'counterbore leaves the antenna room to tighten',
           f'wall reduced to {case.SMA_LOCAL_WALL:.1f} mm from '
           f'{case.WALL:.1f} mm around the connector')
+    check(2 * case.GPS_FIT_CLEARANCE <= 0.5,
+          'GPS cradle lateral play',
+          f'{2 * case.GPS_FIT_CLEARANCE:.1f} mm total across the PCB')
+    check(case.GPS_EDGE_SUPPORT_WIDTH
+          <= case.GPS_COMPONENT_KEEPOUT_INSET,
+          'GPS supports stay in the component-free perimeter',
+          f'{case.GPS_EDGE_SUPPORT_WIDTH:.1f} mm supports inside a '
+          f'{case.GPS_COMPONENT_KEEPOUT_INSET:.1f} mm edge keep-out')
+    check(case.GPS_CLIP_OVERHANG
+          < case.GPS_COMPONENT_KEEPOUT_INSET,
+          'GPS clip lips avoid the component envelope',
+          f'{case.GPS_CLIP_OVERHANG:.1f} mm overhang before components begin '
+          f'at {case.GPS_COMPONENT_KEEPOUT_INSET:.1f} mm')
+    rear_clip_end = (gps['rear_y'] - case.SMA_BASE_LENGTH
+                     - case.GPS_FIT_CLEARANCE)
+    check(rear_clip_end <= gps['rear_y'] - case.SMA_BASE_LENGTH,
+          'rear GPS clips stop before the SMA base',
+          f'{gps["rear_y"] - case.SMA_BASE_LENGTH - rear_clip_end:.1f} mm '
+          'clearance before the base')
 
     # The SMA hole and the cradle that positions it must stay in one part.
     check(case.PARTING_Z < outer_h - case.LID_RIM_HEIGHT,
@@ -371,6 +390,31 @@ def check_standoffs():
           f'{opening_top:.1f}')
 
 
+def check_lid_ventilation():
+    section('Raspberry ventilation')
+    outer_l = case.CASE_INNER_LENGTH + 2 * case.WALL
+    outer_w = case.CASE_INNER_WIDTH + 2 * case.WALL
+    berries, leaves, gps_keepout = case.raspberry_vent_layout(outer_l, outer_w)
+    bridge = case.RASPBERRY_VENT_PITCH - case.RASPBERRY_VENT_DIAMETER
+    check(len(berries) == 18 and len(leaves) == 6,
+          'two complete raspberry motifs',
+          f'{len(berries)} berry and {len(leaves)} leaf vents')
+    check(bridge >= 2.0 - EPS,
+          'printable bridges between berry vents',
+          f'{bridge:.1f} mm minimum nominal bridge')
+    radius = case.RASPBERRY_VENT_DIAMETER / 2
+    clashes = [circle for circle in berries if case.rectangles_overlap(
+        (circle[0] - radius, circle[1] - radius,
+         2 * radius, 2 * radius), gps_keepout)]
+    check(not clashes, 'berry vents clear the GPS carrier',
+          'no overlap' if not clashes else f'{len(clashes)} overlap(s)')
+    leaf_clashes = [leaf for leaf in leaves if case.rectangles_overlap(
+        case.rotated_ellipse_bounds(leaf), gps_keepout)]
+    check(not leaf_clashes, 'leaf vents clear the GPS carrier',
+          'no overlap' if not leaf_clashes
+          else f'{len(leaf_clashes)} overlap(s)')
+
+
 def main():
     check_board_envelope()
     check_assembly_is_possible()
@@ -385,6 +429,7 @@ def main():
     check_snap_strain()
     check_sma_and_gps()
     check_standoffs()
+    check_lid_ventilation()
 
     print('\n'.join(NOTES))
     print()
