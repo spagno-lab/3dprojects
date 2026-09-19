@@ -39,8 +39,10 @@ The lid uses one full-size geometric raspberry on the front centre, made from
 nine 6.5 mm berry vents and two elliptical leaf vents. A repeating field of
 smaller raspberries fills the rest of the visible face, matching the look of a
 decorative perforated sheet. The main berry grid keeps 2 mm bridges; the small
-pattern keeps 1 mm nominal webs. Whole pattern motifs are omitted around the
-GPS cradle, leaving a solid load-bearing island beneath the module and SMA.
+pattern keeps 1 mm nominal webs. Rows are staggered and partial motifs continue
+right up to the safe perimeter, around the large logo and through the open
+centre of the GPS cradle. Only individual holes crossing a load-bearing GPS
+rail or support are omitted, with a 0.6 mm protective margin.
 
 ## Three parts, split at board level
 

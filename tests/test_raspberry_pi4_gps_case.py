@@ -183,7 +183,7 @@ class RaspberryPi4GpsCaseTest(unittest.TestCase):
     def test_raspberry_vents_fill_lid_around_one_central_full_size_logo(self):
         outer_l = module.CASE_INNER_LENGTH + 2 * module.WALL
         outer_w = module.CASE_INNER_WIDTH + 2 * module.WALL
-        circles, leaves, gps_keepout = module.raspberry_vent_layout(
+        circles, leaves, gps_keepouts = module.raspberry_vent_layout(
             outer_l, outer_w, 110.0)
 
         main_circles = [
@@ -195,9 +195,8 @@ class RaspberryPi4GpsCaseTest(unittest.TestCase):
             if circle[2] == module.RASPBERRY_PATTERN_DIAMETER
         ]
         self.assertEqual(len(main_circles), 9)
-        self.assertEqual(len(pattern_circles) % 9, 0)
-        self.assertGreaterEqual(len(pattern_circles) // 9, 16)
-        self.assertEqual(len(leaves), 2 + 2 * (len(pattern_circles) // 9))
+        self.assertGreaterEqual(len(pattern_circles), 180)
+        self.assertGreaterEqual(len(leaves), 40)
         self.assertAlmostEqual(
             sum(circle[0] for circle in main_circles) / len(main_circles),
             110.0 + outer_l / 2,
@@ -223,18 +222,29 @@ class RaspberryPi4GpsCaseTest(unittest.TestCase):
             for circle in circles
         ))
         self.assertTrue(all(
-            not module.rectangles_overlap(
+            not any(module.rectangles_overlap(
                 (circle[0] - circle[2] / 2, circle[1] - circle[2] / 2,
-                 circle[2], circle[2]),
-                gps_keepout,
-            )
+                 circle[2], circle[2]), keepout)
+                    for keepout in gps_keepouts)
             for circle in circles
         ))
         self.assertTrue(all(
-            not module.rectangles_overlap(
-                module.rotated_ellipse_bounds(leaf), gps_keepout)
+            not any(module.rectangles_overlap(
+                module.rotated_ellipse_bounds(leaf), keepout)
+                    for keepout in gps_keepouts)
             for leaf in leaves
         ))
+        # Unlike the earlier whole-motif exclusion, the pattern reaches every
+        # third of the face, including the open centre of the GPS cradle.
+        for y_index in range(3):
+            for x_index in range(3):
+                self.assertTrue(any(
+                    110.0 + x_index * outer_l / 3 <= circle[0]
+                    < 110.0 + (x_index + 1) * outer_l / 3
+                    and y_index * outer_w / 3 <= circle[1]
+                    < (y_index + 1) * outer_w / 3
+                    for circle in pattern_circles
+                ), (x_index, y_index))
 
     def test_body_has_round_sma_hole_at_axis_and_two_millimetre_local_wall(self):
         holes = []

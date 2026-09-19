@@ -394,34 +394,42 @@ def check_lid_ventilation():
     section('Raspberry ventilation')
     outer_l = case.CASE_INNER_LENGTH + 2 * case.WALL
     outer_w = case.CASE_INNER_WIDTH + 2 * case.WALL
-    berries, leaves, gps_keepout = case.raspberry_vent_layout(outer_l, outer_w)
+    berries, leaves, gps_keepouts = case.raspberry_vent_layout(outer_l, outer_w)
     main = [berry for berry in berries
             if berry[2] == case.RASPBERRY_VENT_DIAMETER]
     pattern = [berry for berry in berries
                if berry[2] == case.RASPBERRY_PATTERN_DIAMETER]
-    motif_count = len(pattern) // 9
     bridge = case.RASPBERRY_VENT_PITCH - case.RASPBERRY_VENT_DIAMETER
     pattern_bridge = (
         case.RASPBERRY_PATTERN_PITCH - case.RASPBERRY_PATTERN_DIAMETER)
-    check(len(main) == 9 and len(leaves) == 2 + 2 * motif_count,
-          'one complete central raspberry and repeating lid pattern',
+    check(len(main) == 9 and len(pattern) >= 180 and len(leaves) >= 40,
+          'one complete central raspberry and full-face repeating pattern',
           f'{len(berries)} berry and {len(leaves)} leaf vents')
     check(bridge >= 2.0 - EPS,
           'printable bridges in the central raspberry',
           f'{bridge:.1f} mm nominal bridge')
     check(pattern_bridge >= 1.0 - EPS,
           'printable webs in the small raspberry pattern',
-          f'{pattern_bridge:.1f} mm nominal web across {motif_count} motifs')
-    clashes = [circle for circle in berries if case.rectangles_overlap(
+          f'{pattern_bridge:.1f} mm nominal web across full lid')
+    clashes = [circle for circle in berries if any(case.rectangles_overlap(
         (circle[0] - circle[2] / 2, circle[1] - circle[2] / 2,
-         circle[2], circle[2]), gps_keepout)]
-    check(not clashes, 'berry vents clear the GPS carrier',
+         circle[2], circle[2]), keepout) for keepout in gps_keepouts)]
+    check(not clashes, 'berry vents clear the GPS supports',
           'no overlap' if not clashes else f'{len(clashes)} overlap(s)')
-    leaf_clashes = [leaf for leaf in leaves if case.rectangles_overlap(
-        case.rotated_ellipse_bounds(leaf), gps_keepout)]
-    check(not leaf_clashes, 'leaf vents clear the GPS carrier',
+    leaf_clashes = [leaf for leaf in leaves if any(case.rectangles_overlap(
+        case.rotated_ellipse_bounds(leaf), keepout)
+        for keepout in gps_keepouts)]
+    check(not leaf_clashes, 'leaf vents clear the GPS supports',
           'no overlap' if not leaf_clashes
           else f'{len(leaf_clashes)} overlap(s)')
+    thirds = [
+        sum(1 for circle in pattern
+            if x_index * outer_l / 3 <= circle[0] < (x_index + 1) * outer_l / 3
+            and y_index * outer_w / 3 <= circle[1] < (y_index + 1) * outer_w / 3)
+        for y_index in range(3) for x_index in range(3)
+    ]
+    check(all(thirds), 'small raspberry pattern covers the complete lid face',
+          f'per-zone berry vents {thirds}')
 
 
 def main():
