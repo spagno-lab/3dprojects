@@ -240,8 +240,9 @@ the PCB edges and do not press on the component keep-out.
 
 ## Slicing profile
 
-`raspberry.3mf` carries the Bambu Studio project for an X2D with a 0.4 nozzle
-and PETG. Settings that matter for this part:
+`raspberry.3mf` carries the current shell, lid, and base as three named objects,
+plus the Bambu Studio process configuration for an X2D with a 0.4 nozzle and
+PETG. Settings that matter for this part:
 
 | setting | value | why |
 |---|---|---|
@@ -262,12 +263,19 @@ and PETG. Settings that matter for this part:
 | shell | parting face down | the press pads land on the first layer and the I/O openings are open at the bed, so nothing bridges |
 | lid | rim up | unchanged |
 
-The 3mf project still carries the old single-piece case. Its process settings
-are still the right ones, but the geometry in it is stale: regenerate the
-bodies from the script before slicing.
+All three parts are placed unrotated in their printable orientation: base floor
+down, shell parting face down, and lid rim up.
 
-Both parts are placed unrotated: the case with its opening up and the lid with
-its rim up, so the clips and the rim grow along Z and bend across layer lines.
+Regenerate the archive after geometry changes with:
+
+```bash
+uv run --with numpy --with pillow python export_3mf.py
+```
+
+This requires the `openscad` command (tested with OpenSCAD 2021.01).
+The exporter records the same primitives as `preview.py`, renders each part
+through OpenSCAD, packages three separate 3MF objects, validates the archive,
+and preserves `Metadata/project_settings.config` from the previous project.
 
 ### Loading it
 
